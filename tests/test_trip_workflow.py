@@ -179,3 +179,48 @@ def test_module_does_not_load_gemini_on_import():
     # The Gemini setup is imported inside main(), so building and running the
     # graph never needs an API key.
     assert not hasattr(trip_workflow, "build_llm")
+
+
+# --- Visualization ------------------------------------------------------------
+
+
+def test_mermaid_shows_fixed_and_conditional_edges():
+    mermaid = trip_workflow.render_mermaid()
+    assert "trip_input --> validation;" in mermaid  # fixed edge (solid)
+    assert "validation -.-> ask_clarification;" in mermaid  # conditional (dashed)
+    assert "validation -.-> response;" in mermaid
+
+
+def test_draw_flag_writes_diagram_without_gemini(tmp_path, monkeypatch):
+    # If --draw ever tried to set up Gemini, this would fail the test.
+    def no_gemini():
+        raise AssertionError("--draw must not load Gemini settings")
+
+    monkeypatch.setattr("ai_travel_assistant.llm_basics.load_settings", no_gemini)
+    out = tmp_path / "graph.md"
+
+    assert trip_workflow.main(["--draw", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "```mermaid" in text
+    assert "validation -.-> response;" in text
+
+
+def test_png_flag_links_the_image_without_network(tmp_path, monkeypatch):
+    # Replace the mermaid.ink call with a fake that writes dummy bytes offline.
+    def fake_render_png(path):
+        path.write_bytes(b"fake png")
+        return path
+
+    monkeypatch.setattr(trip_workflow, "render_png", fake_render_png)
+    out = tmp_path / "graph.md"
+
+    assert trip_workflow.main(["--draw", str(out), "--png"]) == 0
+    assert (tmp_path / "graph.png").read_bytes() == b"fake png"
+    text = out.read_text(encoding="utf-8")
+    assert "![Trip workflow graph](graph.png)" in text
+    assert "--draw --png" in text
+
+
+def test_png_flag_needs_draw():
+    with pytest.raises(SystemExit):
+        trip_workflow.main(["--png"])
