@@ -12,6 +12,9 @@ What this file demonstrates:
   5. Multi-turn conversations: a checkpointer saves the state per thread_id,
      interrupt() pauses the graph to wait for the traveller's reply, and
      Command(resume=reply) continues it.
+  6. Context-aware replies: the reply travels together with the question it
+     answers, so a short answer like "3" is read as days after "How many
+     days...?" instead of being guessed at on its own.
 
 Single-turn flow (build_trip_graph(extractor), no checkpointer):
 
@@ -26,8 +29,8 @@ Multi-turn flow (build_trip_graph(extractor, checkpointer=InMemorySaver())):
                  +------------------------------------------- wait_for_reply
                                                        (interrupt: pause here)
 
-Extraction is passed in as a plain function (text -> TripRequest), so the same
-graph runs with Gemini in the app and with fixed offline data in the tests.
+Extraction is passed in as a function (see TripExtractor), so the same graph
+runs with Gemini in the app and with fixed offline data in the tests.
 
 Run from the project root (one Gemini call):
     uv run python -m ai_travel_assistant.trip_workflow "3 days in Ella, love hiking"
@@ -52,7 +55,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.graph_mermaid import draw_mermaid_png
@@ -79,11 +82,36 @@ class TripState(TypedDict, total=False):
     days: int | None  # e.g. 3, or None if not given
     missing_fields: list[str]  # e.g. ["days"]; empty when the request is complete
     response: str  # the final message for the traveller
+    # The clarification question that user_input answers, e.g. "How many days
+    # would you like to spend in Kandy?". Set by wait_for_reply together with
+    # the reply, cleared by trip_input once used. None for a fresh message.
+    clarification_context: str | None
 
 
-# Any function that turns text into a TripRequest. In the app this calls Gemini.
-# In the tests it is a dictionary lookup.
-TripExtractor = Callable[[str], TripRequest]
+class TripExtractor(Protocol):
+    """Anything that turns the traveller's message into a TripRequest.
+
+    In the app this calls Gemini; in the tests it is a dictionary lookup.
+
+    The keyword arguments are context for reading short replies, and are passed
+    only when there is something to pass:
+      clarification_context: the question the message answers, e.g.
+          "How many days would you like to spend in Kandy?"
+      existing_data: details already known, e.g. {"destination": "Kandy"}
+
+    The extractor should return only what the message itself states (read in
+    that context), not repeat existing_data. A first message with nothing known
+    is called as extractor(text), so a text-only function still works for it.
+    """
+
+    def __call__(
+        self,
+        user_input: str,
+        *,
+        clarification_context: str | None = None,
+        existing_data: dict[str, object] | None = None,
+    ) -> TripRequest: ...
+
 
 # Node names, kept in one place so the edges and tests can't drift apart.
 TRIP_INPUT = "trip_input"
@@ -107,18 +135,40 @@ def make_trip_input_node(extractor: TripExtractor) -> Callable[[TripState], dict
 
     def trip_input_node(state: TripState) -> dict:
         text = state.get("user_input", "")
+        question = state.get("clarification_context")
+        # The question belongs to this one reply. Clear it, so a later message
+        # (e.g. a new request after the trip is confirmed) is never read as an
+        # answer to an old question.
+        update: dict = {"clarification_context": None} if question else {}
         if not text.strip():
-            return {}  # nothing to extract: skip the API call, keep the state
-        trip = extractor(text)
+            return update  # nothing to extract: skip the API call, keep the state
+
+        # Give the extractor the context it needs to read a short reply: "3"
+        # means days only because the question asked for days.
+        context: dict = {}
+        if question:
+            context["clarification_context"] = question
+        known = {
+            name: state[name]
+            for name in CRITICAL_FIELDS
+            if not _is_missing(state.get(name))
+        }
+        if known:
+            context["existing_data"] = known
+        trip = extractor(text, **context)
+
         # Merge: return only the fields this message actually gave. A follow-up
         # like "3 days" extracts destination=None, which must not erase the
         # destination from an earlier turn. A new value (e.g. "Actually, make
         # it 5 days") replaces the old one.
-        return {
-            name: getattr(trip, name)
-            for name in CRITICAL_FIELDS
-            if not _is_missing(getattr(trip, name))
-        }
+        update.update(
+            {
+                name: getattr(trip, name)
+                for name in CRITICAL_FIELDS
+                if not _is_missing(getattr(trip, name))
+            }
+        )
+        return update
 
     return trip_input_node
 
@@ -157,11 +207,19 @@ def wait_for_reply_node(state: TripState) -> dict:
     Command(resume=reply), LangGraph runs this node again FROM THE TOP, and this
     time interrupt() returns the reply. That is why this node does nothing but
     wait: any work placed before interrupt() (like a Gemini call) would run twice.
+
+    The reply is returned together with the question it answers (the value the
+    traveller was shown), so trip_input can read "3" as an answer to "How many
+    days...?". Pairing them here means every round uses its own latest question.
     """
-    reply = interrupt(state.get("response", ""))
+    question = state.get("response", "")
+    reply = interrupt(question)
     # Only text can be extracted. Anything else counts as an empty reply, which
     # makes the graph ask the same question again.
-    return {"user_input": reply if isinstance(reply, str) else ""}
+    return {
+        "user_input": reply if isinstance(reply, str) else "",
+        "clarification_context": question or None,
+    }
 
 
 def response_node(state: TripState) -> dict:
@@ -321,7 +379,7 @@ def _drawable_graph():
     node, so a placeholder extractor is enough. No Gemini call is made.
     """
 
-    def placeholder_extractor(text: str) -> TripRequest:
+    def placeholder_extractor(text: str, **context: object) -> TripRequest:
         return TripRequest()
 
     # Draw the multi-turn version, which includes the wait_for_reply loop.
@@ -428,8 +486,9 @@ def write_diagram_doc(
         "| Dashed arrow from `validation` | Conditional edge, chosen by "
         "`route_after_validation` |\n"
         "| Lilac node | Unchanged from the single-turn graph |\n"
-        "| Yellow node | Changed: `trip_input` merges new details into the saved "
-        "ones and skips blank replies |\n"
+        "| Yellow node | Changed: `trip_input` reads each reply together with "
+        "the question it answers, merges new details into the saved ones and "
+        "skips blank replies |\n"
         "| Green node | New: `wait_for_reply` calls `interrupt()` |\n"
         "| Dashed white box | The traveller, outside the graph |\n"
         "| Blue cylinder | The checkpointer (conversation memory) |\n\n"
@@ -442,10 +501,15 @@ def write_diagram_doc(
         "3. The traveller answers. `send_message` sees the thread is paused "
         "and sends `Command(resume=reply)` with the same `thread_id`. The "
         "state is reloaded, `wait_for_reply` re-runs and `interrupt()` returns "
-        "the reply.\n"
-        "4. Back to `trip_input` with the reply: new details are merged into "
-        "the saved ones and validated again. Steps 2-4 repeat until nothing is "
-        "missing.\n"
+        "the reply. `wait_for_reply` returns the reply together with the "
+        "question it answers, saved as `clarification_context`.\n"
+        "4. Back to `trip_input` with the reply. The extractor receives the "
+        "reply, that question and the details already known, so a short answer "
+        "like `3` is read as days after *How many days...?*. New details are "
+        "merged into the saved ones (a missing value never erases a saved one), "
+        "the question is cleared, and the result is validated again. Steps 2-4 "
+        "repeat until nothing is missing; each round uses its own latest "
+        "question.\n"
         "5. All details present: `response` confirms the trip and the run "
         "ends.\n\n"
         f"{image}"
@@ -522,8 +586,18 @@ def main(argv: list[str] | None = None) -> int:
     # The real extractor: Stage 1's structured output, called by trip_input_node.
     llm = build_llm(settings, temperature=0)
 
-    def gemini_extractor(text: str) -> TripRequest:
-        return extract_trip_request(llm, text)
+    def gemini_extractor(
+        text: str,
+        *,
+        clarification_context: str | None = None,
+        existing_data: dict[str, object] | None = None,
+    ) -> TripRequest:
+        return extract_trip_request(
+            llm,
+            text,
+            clarification_context=clarification_context,
+            existing_data=existing_data,
+        )
 
     try:
         if args.chat:

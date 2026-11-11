@@ -312,17 +312,61 @@ FOLLOW_UPS: dict[str, TripRequest] = {
 }
 
 
+DAYS_IN_KANDY = "How many days would you like to spend in Kandy?"
+DAYS_IN_ELLA = "How many days would you like to spend in Ella?"
+WHERE_FOR_5_DAYS = "Where in Sri Lanka would you like to spend your 5 days?"
+WHERE_AND_HOW_LONG = "Where in Sri Lanka would you like to go, and for how many days?"
+
+# Short replies that only make sense next to the question asked before them,
+# keyed by (question, reply): the fake reads both together, as Gemini does.
+CONTEXT_REPLIES: dict[tuple[str, str], TripRequest] = {
+    (DAYS_IN_KANDY, "3"): TripRequest(days=3),
+    (DAYS_IN_KANDY, "5"): TripRequest(days=5),
+    (DAYS_IN_KANDY, "3 days"): TripRequest(days=3),
+    (DAYS_IN_KANDY, "Around 3 days"): TripRequest(days=3),
+    (DAYS_IN_KANDY, "Maybe 4"): TripRequest(days=4),
+    (DAYS_IN_KANDY, "Five days"): TripRequest(days=5),
+    (DAYS_IN_KANDY, "A week"): TripRequest(days=7),
+    (DAYS_IN_KANDY, "For two days"): TripRequest(days=2),
+    (
+        DAYS_IN_KANDY,
+        "I'd like to spend 4 days there, mostly seeing temples",
+    ): TripRequest(days=4, interests=["temples"]),
+    # Answers something else: a number that is not a trip length, and a date.
+    (DAYS_IN_KANDY, "We are 3 people"): TripRequest(travellers=3),
+    (DAYS_IN_KANDY, "tomorrow"): TripRequest(travel_dates="tomorrow"),
+    (WHERE_FOR_5_DAYS, "Kandy"): TripRequest(destination="Kandy"),
+    (WHERE_FOR_5_DAYS, "3"): TripRequest(),  # a bare number is not a place
+    (WHERE_AND_HOW_LONG, "Ella"): TripRequest(destination="Ella"),
+    (DAYS_IN_ELLA, "3"): TripRequest(days=3),
+}
+
+
 class CountingExtractor:
     """Fake extractor that records every message it is asked about.
 
-    The record shows how many times the real API would have been called.
+    calls holds the texts, which shows how many times the real API would have
+    been called. requests also holds the context each call received.
     """
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.requests: list[dict] = []
 
-    def __call__(self, text: str) -> TripRequest:
+    def __call__(
+        self, text: str, *, clarification_context=None, existing_data=None
+    ) -> TripRequest:
         self.calls.append(text)
+        self.requests.append(
+            {
+                "user_input": text,
+                "clarification_context": clarification_context,
+                "existing_data": existing_data,
+            }
+        )
+        key = (clarification_context, text)
+        if key in CONTEXT_REPLIES:
+            return CONTEXT_REPLIES[key]
         return {**OFFLINE_TRIPS, **FOLLOW_UPS}[text]
 
 
@@ -523,3 +567,216 @@ def test_run_chat_reads_the_first_message_when_none_is_given(extractor):
 def test_cli_needs_text_unless_chatting():
     with pytest.raises(SystemExit):
         trip_workflow.main([])
+
+
+# --- Context-aware replies (the question travels with the answer) -------------
+
+
+def test_trip_input_passes_question_and_known_details(extractor):
+    node = make_trip_input_node(extractor)
+    update = node(
+        {
+            "user_input": "3",
+            "clarification_context": DAYS_IN_KANDY,
+            "destination": "Kandy",
+            "days": None,
+        }
+    )
+    assert extractor.requests == [
+        {
+            "user_input": "3",
+            "clarification_context": DAYS_IN_KANDY,
+            "existing_data": {"destination": "Kandy"},  # missing days not sent
+        }
+    ]
+    # The new detail is returned and the used question is cleared.
+    assert update == {"days": 3, "clarification_context": None}
+
+
+def test_first_message_is_extracted_from_the_text_alone():
+    # Backward compatible: with nothing known, a text-only extractor still works.
+    seen: list[str] = []
+
+    def text_only_extractor(text: str) -> TripRequest:
+        seen.append(text)
+        return OFFLINE_TRIPS[text]
+
+    state = run_trip_workflow(text_only_extractor, "I want to visit Kandy")
+    assert seen == ["I want to visit Kandy"]
+    assert state["response"] == DAYS_IN_KANDY
+
+
+def test_trip_input_skips_blank_reply_but_clears_the_question(extractor):
+    node = make_trip_input_node(extractor)
+    update = node({"user_input": "  ", "clarification_context": DAYS_IN_KANDY})
+    assert update == {"clarification_context": None}
+    assert extractor.calls == []
+
+
+def test_resume_pairs_the_reply_with_its_question(chat_graph):
+    config = thread_config("t1")
+    chat_graph.invoke({"user_input": "I want to visit Kandy."}, config)
+    updates = list(chat_graph.stream(Command(resume="3"), config))
+    assert updates[0] == {
+        WAIT_FOR_REPLY: {"user_input": "3", "clarification_context": DAYS_IN_KANDY}
+    }
+    assert updates[1] == {"trip_input": {"days": 3, "clarification_context": None}}
+
+
+@pytest.mark.parametrize(
+    ("reply", "days"),
+    [
+        ("3", 3),
+        ("5", 5),
+        ("3 days", 3),
+        ("Around 3 days", 3),
+        ("Maybe 4", 4),
+        ("Five days", 5),
+        ("A week", 7),
+        ("For two days", 2),
+    ],
+)
+def test_short_reply_to_days_question_sets_days(chat_graph, extractor, reply, days):
+    send_message(chat_graph, "t1", "I want to visit Kandy.")
+    state = send_message(chat_graph, "t1", reply)
+
+    assert extractor.requests[-1] == {
+        "user_input": reply,
+        "clarification_context": DAYS_IN_KANDY,
+        "existing_data": {"destination": "Kandy"},
+    }
+    assert (state["destination"], state["days"]) == ("Kandy", days)
+    assert state["response"] == f"Great! I've noted a {days}-day trip to Kandy."
+    assert state["clarification_context"] is None
+    assert not is_awaiting_reply(chat_graph, "t1")
+
+
+def test_place_reply_to_destination_question_keeps_the_days(chat_graph, extractor):
+    send_message(chat_graph, "t1", "I want to travel for 5 days.")
+    state = send_message(chat_graph, "t1", "Kandy")
+
+    assert extractor.requests[-1] == {
+        "user_input": "Kandy",
+        "clarification_context": WHERE_FOR_5_DAYS,
+        "existing_data": {"days": 5},
+    }
+    assert (state["destination"], state["days"]) == ("Kandy", 5)
+    assert state["response"] == "Great! I've noted a 5-day trip to Kandy."
+
+
+def test_full_sentence_reply_is_understood(chat_graph, extractor):
+    send_message(chat_graph, "t1", "I want to visit Kandy.")
+    reply = "I'd like to spend 4 days there, mostly seeing temples"
+    state = send_message(chat_graph, "t1", reply)
+    assert extractor.requests[-1]["clarification_context"] == DAYS_IN_KANDY
+    assert (state["destination"], state["days"]) == ("Kandy", 4)
+
+
+@pytest.mark.parametrize("reply", ["We are 3 people", "tomorrow"])
+def test_unrelated_reply_does_not_become_the_trip_length(chat_graph, reply):
+    send_message(chat_graph, "t1", "I want to visit Kandy.")
+    state = send_message(chat_graph, "t1", reply)
+    assert state.get("days") is None  # never set
+    assert state["missing_fields"] == ["days"]
+    assert state["destination"] == "Kandy"
+    assert state["response"] == DAYS_IN_KANDY  # asked again
+    assert is_awaiting_reply(chat_graph, "t1")
+
+
+def test_reasked_question_is_used_for_the_next_reply(chat_graph, extractor):
+    send_message(chat_graph, "t1", "I want to visit Kandy.")
+    send_message(chat_graph, "t1", "We are 3 people")
+    state = send_message(chat_graph, "t1", "3")
+    assert [r["clarification_context"] for r in extractor.requests] == [
+        None,
+        DAYS_IN_KANDY,
+        DAYS_IN_KANDY,
+    ]
+    assert state["days"] == 3
+
+
+def test_each_round_uses_the_latest_question(chat_graph, extractor):
+    send_message(chat_graph, "t1", "Where should I go in Sri Lanka?")
+    send_message(chat_graph, "t1", "Ella")
+    state = send_message(chat_graph, "t1", "3")
+
+    assert extractor.requests == [
+        {
+            "user_input": "Where should I go in Sri Lanka?",
+            "clarification_context": None,
+            "existing_data": None,
+        },
+        {
+            "user_input": "Ella",
+            "clarification_context": WHERE_AND_HOW_LONG,
+            "existing_data": None,  # nothing known yet
+        },
+        {
+            "user_input": "3",
+            "clarification_context": DAYS_IN_ELLA,  # not the first question
+            "existing_data": {"destination": "Ella"},
+        },
+    ]
+    assert (state["destination"], state["days"]) == ("Ella", 3)
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_reply_keeps_the_question_for_the_next_reply(
+    chat_graph, extractor, blank
+):
+    send_message(chat_graph, "t1", "I want to visit Kandy.")
+    state = send_message(chat_graph, "t1", blank)
+    assert state["response"] == DAYS_IN_KANDY
+    assert extractor.calls == ["I want to visit Kandy."]  # no call for blank
+
+    state = send_message(chat_graph, "t1", "3")
+    assert extractor.requests[-1]["clarification_context"] == DAYS_IN_KANDY
+    assert state["days"] == 3
+
+
+def test_question_is_not_reused_after_the_trip_is_complete(chat_graph, extractor):
+    send_message(chat_graph, "t1", "I want to visit Kandy.")
+    send_message(chat_graph, "t1", "3")
+    state = send_message(chat_graph, "t1", "Actually, make it 5 days")
+
+    # A new message after the confirmation answers no question, but the
+    # extractor still sees the trip so far.
+    assert extractor.requests[-1] == {
+        "user_input": "Actually, make it 5 days",
+        "clarification_context": None,
+        "existing_data": {"destination": "Kandy", "days": 3},
+    }
+    assert (state["destination"], state["days"]) == ("Kandy", 5)
+
+
+def test_threads_keep_their_own_questions(chat_graph, extractor):
+    send_message(chat_graph, "kandy", "I want to visit Kandy.")
+    send_message(chat_graph, "five-days", "I want to travel for 5 days.")
+
+    # The same reply means different things in the two conversations.
+    kandy = send_message(chat_graph, "kandy", "3")
+    five_days = send_message(chat_graph, "five-days", "3")
+
+    assert [r["clarification_context"] for r in extractor.requests[2:]] == [
+        DAYS_IN_KANDY,
+        WHERE_FOR_5_DAYS,
+    ]
+    assert (kandy["destination"], kandy["days"]) == ("Kandy", 3)
+    assert (five_days.get("destination"), five_days["days"]) == (None, 5)
+    assert five_days["response"] == WHERE_FOR_5_DAYS  # "3" is not a place
+
+
+def test_run_chat_understands_a_bare_number(extractor):
+    replies = iter(["3"])
+    shown: list[str] = []
+    state = run_chat(
+        extractor,
+        "I want to visit Kandy.",
+        read=lambda prompt: next(replies),
+        write=shown.append,
+    )
+    assert shown == [
+        f"AI: {DAYS_IN_KANDY}",
+        "AI: Great! I've noted a 3-day trip to Kandy.",
+    ]
+    assert (state["destination"], state["days"]) == ("Kandy", 3)

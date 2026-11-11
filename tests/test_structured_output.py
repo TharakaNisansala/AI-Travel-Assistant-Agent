@@ -95,6 +95,37 @@ def test_extract_returns_trip_request_and_sends_instructions():
     assert messages[1] == HumanMessage("3 days in Ella")
 
 
+def test_extract_sends_the_question_and_known_details_with_a_short_reply():
+    fake = FakeStructuredModel(responses=['{"days": 3}'])
+    trip = structured_output.extract_trip_request(
+        fake,
+        "3",
+        clarification_context="How many days would you like to spend in Kandy?",
+        existing_data={"destination": "Kandy"},
+    )
+
+    assert trip == TripRequest(days=3)
+    messages = fake.received[-1]
+    assert messages[0].content == structured_output.EXTRACTION_INSTRUCTIONS
+    assert messages[1] == HumanMessage(
+        "Trip details already known: destination=Kandy\n"
+        "Question the assistant just asked: "
+        "How many days would you like to spend in Kandy?\n"
+        "Traveller's latest reply: 3"
+    )
+
+
+def test_extraction_message_is_plain_text_without_context():
+    assert structured_output.build_extraction_message("Kandy") == "Kandy"
+
+
+def test_instructions_explain_how_to_use_the_question():
+    rules = structured_output.EXTRACTION_INSTRUCTIONS
+    assert "question the assistant just asked" in rules
+    assert '"We are 3" is travellers, not days' in rules
+    assert "Do not copy known details" in rules
+
+
 def test_extract_surfaces_invalid_model_output():
     fake = FakeStructuredModel(responses=['{"days": -2}'])
     with pytest.raises(ValidationError):
