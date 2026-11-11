@@ -1,0 +1,20 @@
+# Secrets: never commit real keys
+.env
+.env.*
+!.env.example
+
+# Virtual environment
+.venv/
+
+# Python build/cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
