@@ -21,6 +21,12 @@ graph runs with Gemini in the app and with fixed offline data in the tests.
 Run from the project root (one Gemini call):
     uv run python -m ai_travel_assistant.trip_workflow "3 days in Ella, love hiking"
 
+Draw the graph into docs/ as a Mermaid diagram (offline, no Gemini call):
+    uv run python -m ai_travel_assistant.trip_workflow --draw
+
+Also save it as a PNG image (sends the diagram text to the mermaid.ink service):
+    uv run python -m ai_travel_assistant.trip_workflow --draw --png
+
 No tools, memory, or multiple agents here.
 """
 
@@ -29,6 +35,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -171,13 +178,107 @@ def run_trip_workflow(extractor: TripExtractor, user_input: str) -> TripState:
     return graph.invoke({"user_input": user_input})
 
 
-# --- CLI (live: one Gemini call) ----------------------------------------------
+# --- Visualization (offline) --------------------------------------------------
+
+DEFAULT_DIAGRAM_PATH = Path("docs/trip_workflow_graph.md")
+
+
+def _drawable_graph():
+    """Return a description of the graph's nodes and edges, ready to draw.
+
+    The graph's shape does not depend on the extractor, and drawing never runs a
+    node, so a placeholder extractor is enough. No Gemini call is made.
+    """
+
+    def placeholder_extractor(text: str) -> TripRequest:
+        return TripRequest()
+
+    return build_trip_graph(placeholder_extractor).get_graph()
+
+
+def render_mermaid() -> str:
+    """Return the graph as Mermaid diagram text (made locally, no network)."""
+    return _drawable_graph().draw_mermaid()
+
+
+def render_png(path: Path) -> Path:
+    """Save the graph as a PNG image.
+
+    Uses LangGraph's default method: the Mermaid text (node names and edges only,
+    no keys or user data) is sent to the mermaid.ink web service, which returns
+    the image. Needs an internet connection.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _drawable_graph().draw_mermaid_png(output_file_path=str(path))
+    return path
+
+
+def write_diagram_doc(
+    path: Path = DEFAULT_DIAGRAM_PATH, png_path: Path | None = None
+) -> Path:
+    """Write a Markdown page with the Mermaid diagram (and the PNG, if given)."""
+    command = "uv run python -m ai_travel_assistant.trip_workflow --draw"
+    image = ""
+    if png_path is not None:
+        command += " --png"
+        # Link the image relative to the Markdown file so it works on GitHub.
+        relative = png_path.resolve().relative_to(path.parent.resolve())
+        image = f"![Trip workflow graph]({relative.as_posix()})\n\n"
+
+    content = (
+        "# Trip workflow graph\n\n"
+        "Generated from the compiled LangGraph in "
+        "`src/ai_travel_assistant/trip_workflow.py`. Do not edit by hand; "
+        f"regenerate with:\n\n```\n{command}\n```\n\n"
+        "Solid arrows are fixed edges. Dashed arrows are the conditional edge: "
+        "`route_after_validation` picks `ask_clarification` when destination or "
+        "days is missing, and `response` otherwise.\n\n"
+        f"{image}"
+        f"```mermaid\n{render_mermaid().strip()}\n```\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+# --- CLI ----------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the trip-request workflow.")
-    parser.add_argument("text", help='Trip request, e.g. "3 days in Ella"')
+    parser.add_argument(
+        "text", nargs="?", help='Trip request, e.g. "3 days in Ella" (one Gemini call)'
+    )
+    parser.add_argument(
+        "--draw",
+        nargs="?",
+        const=DEFAULT_DIAGRAM_PATH,
+        type=Path,
+        metavar="PATH",
+        help=f"write the graph diagram (default: {DEFAULT_DIAGRAM_PATH}); offline",
+    )
+    parser.add_argument(
+        "--png",
+        action="store_true",
+        help="with --draw: also save a PNG next to it (uses the mermaid.ink service)",
+    )
     args = parser.parse_args(argv)
+
+    if args.png and args.draw is None:
+        parser.error("--png is used together with --draw")
+    if args.draw is not None:
+        png_path = None
+        if args.png:
+            try:
+                png_path = render_png(args.draw.with_suffix(".png"))
+            except Exception as exc:  # e.g. no internet, or mermaid.ink is down
+                print(f"PNG failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                return 1
+            print(f"Image written to {png_path}")
+        print(f"Diagram written to {write_diagram_doc(args.draw, png_path)}")
+        return 0
+    if args.text is None:
+        parser.error("give a trip request, or use --draw")
 
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
