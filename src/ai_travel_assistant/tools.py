@@ -1,4 +1,4 @@
-"""Stage 3: tools the LLM can call.
+"""Stage 3 and 4: tools the LLM can call.
 
 What this file demonstrates:
   1. A plain Python search function over a small, built-in dataset.
@@ -13,14 +13,24 @@ so the LLM (and the traveller) never mistake it for live search results.
 Try the tool on its own (offline, no Gemini call):
     uv run python -c "from ai_travel_assistant.tools import search_destinations; \
 print(search_destinations.invoke({'query': 'hiking'}))"
+
+Stage 4 adds get_weather_forecast, the first tool backed by a real external API
+(Open-Meteo). The HTTP work lives in weather_service.py; this file only wraps it
+as a tool and formats the result for the LLM. Try it (2 HTTP requests, no Gemini):
+    uv run python -c "from ai_travel_assistant.tools import get_weather_forecast; \
+print(get_weather_forecast.invoke({'destination': 'Ella'}))"
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 
 from langchain_core.tools import tool
+
+from ai_travel_assistant import weather_service
+from ai_travel_assistant.weather_service import WeatherReport, WeatherServiceError
 
 # --- The offline dataset ------------------------------------------------------
 
@@ -232,3 +242,103 @@ def search_destinations(query: str) -> str:
             e.g. "hiking" or "beaches for surfing".
     """
     return format_destinations(query, find_destinations(query))
+
+
+# --- Weather (Stage 4: a real external API) -----------------------------------
+
+
+def _show(value: float | None, unit: str, digits: int = 1) -> str:
+    """e.g. 19.1 -> "19.1 °C"; None -> "n/a" (Open-Meteo sent no value)."""
+    return "n/a" if value is None else f"{value:.{digits}f} {unit}"
+
+
+def _weekday(iso_date: str) -> str:
+    """ "2026-11-13" -> "Fri"; returns "" if the date cannot be parsed."""
+    try:
+        return date.fromisoformat(iso_date).strftime("%a")
+    except ValueError:
+        return ""
+
+
+def format_weather_report(report: WeatherReport) -> str:
+    """Turn a WeatherReport into the short text the LLM will read.
+
+    Only the useful fields, always with units, and "n/a" for missing values,
+    so the LLM never has to guess what a number means or invent a missing one.
+    """
+    loc = report.location
+    header = (
+        f"Weather forecast for {loc.label}, "
+        f"at lat {loc.latitude:.2f}, lon {loc.longitude:.2f}"
+        + (f", elevation {loc.elevation:.0f} m" if loc.elevation is not None else "")
+        + "."
+    )
+    lines = [header]
+    if report.timezone:
+        lines.append(f"Times are local ({report.timezone}).")
+
+    current = report.current
+    if current is None:
+        lines.append("Current conditions: not available.")
+    else:
+        lines.append(
+            f"Current conditions ({current.time.replace('T', ' ')}): "
+            f"{_show(current.temperature_c, '°C')}, "
+            f"{current.conditions or 'conditions n/a'}, "
+            f"wind {_show(current.wind_speed_kmh, 'km/h')}, "
+            f"precipitation {_show(current.precipitation_mm, 'mm')}."
+        )
+
+    lines.append(f"Daily forecast ({len(report.daily)} days):")
+    for day in report.daily:
+        weekday = _weekday(day.date)
+        when = f"{day.date} ({weekday})" if weekday else day.date
+        rain_chance = (
+            "n/a"
+            if day.precipitation_probability_pct is None
+            else f"{day.precipitation_probability_pct:.0f}%"
+        )
+        lines.append(
+            f"- {when}: {day.conditions or 'conditions n/a'}; "
+            f"min {_show(day.temperature_min_c, '°C')}, "
+            f"max {_show(day.temperature_max_c, '°C')}; "
+            f"chance of precipitation {rain_chance}; "
+            f"rainfall {_show(day.precipitation_sum_mm, 'mm')}; "
+            f"max wind {_show(day.wind_speed_max_kmh, 'km/h')}."
+        )
+
+    if any("n/a" in line for line in lines):
+        lines.append("Values shown as n/a were not provided by the weather service.")
+    lines.append("Source: Open-Meteo live forecast API (open-meteo.com).")
+    return "\n".join(lines)
+
+
+# Errors are RETURNED as text, not raised: the LLM reads the message and can
+# tell the traveller what went wrong, and the rest of the agent keeps running.
+
+
+@tool
+def get_weather_forecast(destination: str, country_code: str = "LK") -> str:
+    """Get the live weather forecast for a destination from the Open-Meteo API.
+
+    Use this whenever the traveller asks about the weather, temperature, rain,
+    wind or what to pack for a place. Returns the current conditions and a
+    3-day daily forecast (conditions, min/max temperature in °C, chance of
+    precipitation, rainfall in mm, max wind in km/h), or a message explaining
+    why the forecast is unavailable.
+
+    Args:
+        destination: Only the place name, e.g. "Ella" or "Nuwara Eliya".
+        country_code: Two-letter ISO country code of the place. Defaults to
+            "LK" (Sri Lanka); use another code such as "IN" for places
+            outside Sri Lanka.
+    """
+    try:
+        report = weather_service.get_weather_report(destination, country_code)
+    except WeatherServiceError as exc:
+        return (
+            f"Weather unavailable for '{destination}': {exc} "
+            "Tell the traveller the forecast could not be retrieved; "
+            "do not guess the weather."
+        )
+    return format_weather_report(report)
