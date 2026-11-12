@@ -23,6 +23,12 @@ Run from the project root (usually 2 Gemini calls: one to choose the tool, one
 to write the answer):
     uv run python -m ai_travel_assistant.tool_calling "Find places for hiking"
     uv run python -m ai_travel_assistant.tool_calling --steps "Where can I surf?"
+    uv run python -m ai_travel_assistant.tool_calling --steps \\
+        "What is the weather forecast for Ella?"
+
+Stage 4 adds get_weather_forecast, which calls the real Open-Meteo API (2 HTTP
+requests, no API key). The graph does not change: a new tool only needs to be
+added to TOOLS, and Gemini decides from its docstring when to call it.
 
 No memory, MCP or multiple agents here; each run starts a fresh conversation.
 """
@@ -40,10 +46,11 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from ai_travel_assistant.tools import search_destinations
+from ai_travel_assistant.tools import get_weather_forecast, search_destinations
 
-# The tools this agent may use. Add more here in Stage 4.
-TOOLS: tuple[BaseTool, ...] = (search_destinations,)
+# The tools this agent may use. bind_tools() sends all of them to the LLM, and
+# ToolNode can run any of them.
+TOOLS: tuple[BaseTool, ...] = (search_destinations, get_weather_forecast)
 
 # Node names. "tools" is the name tools_condition returns, so the tool node must
 # be called exactly that (or we would need a mapping in add_conditional_edges).
@@ -54,9 +61,14 @@ SYSTEM_PROMPT = (
     "You are a friendly Sri Lanka travel assistant. "
     "When the traveller asks where to go or which places suit an activity, call "
     "the search_destinations tool and base your answer on its results. "
-    "Recommend only places the tool returned, and mention that they come from "
+    "Recommend only places that tool returned, and mention that they come from "
     "the built-in guide. If the tool finds nothing, say so and suggest a broader "
-    "search. Keep answers short."
+    "search. "
+    "When the traveller asks about the weather, rain, temperature or what to "
+    "pack, call the get_weather_forecast tool with just the place name and base "
+    "your answer only on the forecast it returns, using its units. If the "
+    "forecast is unavailable, say so plainly and never guess the weather. "
+    "Keep answers short."
 )
 
 
