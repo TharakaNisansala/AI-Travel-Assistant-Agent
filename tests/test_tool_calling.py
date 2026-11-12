@@ -166,7 +166,12 @@ def test_graph_has_llm_and_tools_nodes():
 def test_build_binds_the_search_tool():
     model = scripted()
     build_tool_agent_graph(model)
-    assert model.bound_tools == [search_destinations]
+    # Stage 4 added the weather tool; the search tool must still be bound first.
+    assert model.bound_tools[0] is search_destinations
+    assert [t.name for t in model.bound_tools] == [
+        "search_destinations",
+        "get_weather_forecast",
+    ]
 
 
 def test_tool_call_then_final_answer():
