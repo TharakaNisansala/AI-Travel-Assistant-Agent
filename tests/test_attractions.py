@@ -732,7 +732,7 @@ def test_agent_survives_an_overpass_outage(monkeypatch):
     assert final_answer(messages).startswith("Sorry")
 
 
-# --- 7. Live (real APIs, opt-in)----------------------------------------------
+# --- 7. Live (real APIs, opt-in) ----------------------------------------------
 
 
 @pytest.mark.live
