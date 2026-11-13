@@ -25,10 +25,15 @@ to write the answer):
     uv run python -m ai_travel_assistant.tool_calling --steps "Where can I surf?"
     uv run python -m ai_travel_assistant.tool_calling --steps \\
         "What is the weather forecast for Ella?"
+    uv run python -m ai_travel_assistant.tool_calling --steps \\
+        "What nature spots can I see around Ella?"
 
 Stage 4 adds get_weather_forecast, which calls the real Open-Meteo API (2 HTTP
 requests, no API key). The graph does not change: a new tool only needs to be
 added to TOOLS, and Gemini decides from its docstring when to call it.
+find_attractions (OpenStreetMap via Overpass, 2 HTTP requests) is added the
+same way. With three tools, SYSTEM_PROMPT says how they relate: search to choose
+a place, attractions for what to see at a named place, weather for forecasts.
 
 No memory, MCP or multiple agents here; each run starts a fresh conversation.
 """
@@ -46,28 +51,54 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from ai_travel_assistant.tools import get_weather_forecast, search_destinations
+from ai_travel_assistant.tools import (
+    find_attractions,
+    get_weather_forecast,
+    search_destinations,
+)
 
 # The tools this agent may use. bind_tools() sends all of them to the LLM, and
-# ToolNode can run any of them.
-TOOLS: tuple[BaseTool, ...] = (search_destinations, get_weather_forecast)
+# ToolNode can run any of them (and only them).
+TOOLS: tuple[BaseTool, ...] = (
+    search_destinations,
+    get_weather_forecast,
+    find_attractions,
+)
 
 # Node names. "tools" is the name tools_condition returns, so the tool node must
 # be called exactly that (or we would need a mapping in add_conditional_edges).
 LLM = "llm"
 TOOLS_NODE = "tools"
 
+# Each tool's docstring says what that tool does; this prompt says how the
+# tools relate, so the LLM can choose between overlapping ones.
 SYSTEM_PROMPT = (
-    "You are a friendly Sri Lanka travel assistant. "
-    "When the traveller asks where to go or which places suit an activity, call "
-    "the search_destinations tool and base your answer on its results. "
-    "Recommend only places that tool returned, and mention that they come from "
-    "the built-in guide. If the tool finds nothing, say so and suggest a broader "
-    "search. "
+    "You are a friendly Sri Lanka travel assistant. Choose tools like this. "
+    # Choosing WHERE to go.
+    "When the traveller has not chosen a place yet and asks where to go or which "
+    "places suit an activity, call search_destinations. Recommend only places it "
+    "returned, and mention that they come from the built-in guide. If it finds "
+    "nothing, say so and suggest a broader search. "
+    "If they also want to know what to see, call find_attractions for the one "
+    "place that fits best, not for every result. "
+    # WHAT to see at a named place.
+    "When the traveller names a place and asks what to see or do there, call "
+    "find_attractions with just the place name and a category matching their "
+    "interests: nature for waterfalls, peaks or viewpoints; culture for temples, "
+    "museums or history; landmarks for well-known sights; all when unsure or "
+    "mixed. Mention only attractions it returned, and note that distances are "
+    "straight-line. If it finds nothing for a specific category, you may retry "
+    "once with category all. It does not cover hotels, restaurants or hiking "
+    "routes; say so instead of inventing them. "
+    # Weather.
     "When the traveller asks about the weather, rain, temperature or what to "
-    "pack, call the get_weather_forecast tool with just the place name and base "
-    "your answer only on the forecast it returns, using its units. If the "
-    "forecast is unavailable, say so plainly and never guess the weather. "
+    "pack, call get_weather_forecast with just the place name and base your "
+    "answer only on the forecast it returns, using its units. "
+    # Combining tools and handling failures.
+    "When planning a visit to a named place, you may call find_attractions and "
+    "get_weather_forecast in the same step. If a tool says its data is "
+    "unavailable, do not call it again; tell the traveller plainly and never "
+    "guess the weather or invent places. "
     "Keep answers short."
 )
 

@@ -163,14 +163,16 @@ def test_graph_has_llm_and_tools_nodes():
     assert {LLM, TOOLS_NODE} <= set(graph.get_graph().nodes)
 
 
-def test_build_binds_the_search_tool():
+def test_build_binds_every_tool_in_order():
+    # The one exact check of the tool list; feature tests only check that
+    # their own tool is bound, so adding a tool changes just this test.
     model = scripted()
     build_tool_agent_graph(model)
-    # Stage 4 added the weather tool; the search tool must still be bound first.
     assert model.bound_tools[0] is search_destinations
     assert [t.name for t in model.bound_tools] == [
         "search_destinations",
         "get_weather_forecast",
+        "find_attractions",
     ]
 
 

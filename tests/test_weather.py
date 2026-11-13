@@ -27,7 +27,6 @@ from ai_travel_assistant.tool_calling import (
 from ai_travel_assistant.tools import (
     format_weather_report,
     get_weather_forecast,
-    search_destinations,
 )
 from ai_travel_assistant.weather_service import (
     FORECAST_URL,
@@ -462,10 +461,11 @@ def weather_call(destination: str = "Ella", call_id: str = "call_w1") -> AIMessa
     )
 
 
-def test_agent_binds_both_tools():
+def test_agent_binds_the_weather_tool():
+    # Membership only: the exact tool list is checked once, in test_tool_calling.
     model = ScriptedToolModel(messages=iter([]))
     build_tool_agent_graph(model)
-    assert model.bound_tools == [search_destinations, get_weather_forecast]
+    assert get_weather_forecast in model.bound_tools
 
 
 def test_agent_calls_the_weather_tool_and_answers_from_its_result(fake_api):
