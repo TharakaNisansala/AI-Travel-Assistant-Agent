@@ -6,13 +6,16 @@ the network: our handler receives each request and returns a prepared response
 synthetic, shaped like real Overpass JSON, with approximate coordinates for
 real places around Ella, Sri Lanka.
 
-The live test calls the real geocoding and Overpass APIs (2 HTTP requests, no
-Gemini) and runs only with:
-    uv run pytest -m live tests/test_attractions.py
+The live tests (section 7) call the real Open-Meteo geocoding and Overpass APIs,
+never Gemini. Run them ONE AT A TIME by node ID, about 10 seconds apart, e.g.:
+    uv run pytest -m live tests/test_attractions.py::test_live_attractions_near_ella
+Never run the whole live group (`pytest -m live` with no node ID): it also
+includes Gemini tests that spend the small daily quota.
 """
 
 from __future__ import annotations
 
+import re
 from urllib.parse import parse_qs
 
 import httpx
@@ -49,7 +52,11 @@ from ai_travel_assistant.tool_calling import (
     final_answer,
     run_tool_agent,
 )
-from ai_travel_assistant.tools import find_attractions, format_attractions_report
+from ai_travel_assistant.tools import (
+    ATTRACTIONS_SOURCE,
+    find_attractions,
+    format_attractions_report,
+)
 from ai_travel_assistant.weather_service import GEOCODING_URL, USER_AGENT, Location
 
 # --- Sample data --------------------------------------------------------------
@@ -741,3 +748,153 @@ def test_live_attractions_near_ella():
 
     assert report.attractions, "expected at least one attraction near Ella"
     assert all(a.distance_km <= 5.5 for a in report.attractions)
+
+
+# Stage 4 live validation. Policy: an overloaded or slow Overpass server (HTTP
+# 429/502/503/504 or a "runtime error" remark, or no answer within
+# REQUEST_TIMEOUT) says nothing about our
+# code, so those runs are SKIPPED as inconclusive instead of failing. Unexpected
+# responses and bugs in our code still fail.
+
+INCONCLUSIVE = "INCONCLUSIVE (infrastructure, not a code failure)"
+NATURE_KINDS = {"waterfall", "peak", "viewpoint"}
+CULTURE_KINDS = {
+    "museum",
+    "temple",
+    "church",
+    "mosque",
+    "place of worship",
+    "archaeological site",
+    "monument",
+    "ruins",
+    "castle",
+    "fort",
+}
+# One result line of format_attractions_report: "- <name> (<kind>), 1.2 km".
+# The kind is the LAST bracket, so names that contain brackets still parse.
+RESULT_LINE = re.compile(r"^- (?P<name>.+) \((?P<kind>[^()]+)\), [\d.]+ km$", re.M)
+
+
+def _overpass_temporarily_unavailable(tool_text: str) -> bool:
+    """Whether a find_attractions result reports a busy or slow Overpass server.
+
+    Works on the tool's text and on a service exception's message alike.
+    """
+    return bool(_OVERPASS_TRANSIENT.search(tool_text))
+
+
+# Messages of AttractionsBusyError (429/504, runtime-error remark),
+# AttractionsTimeoutError, and AttractionsHTTPError for 502/503.
+_OVERPASS_TRANSIENT = re.compile(
+    r"Overpass API is busy \(HTTP"
+    r"|Overpass API could not finish the search"
+    r"|Overpass API did not respond within"
+    r"|Overpass API returned HTTP 50[23]\."
+)
+
+
+# The two helpers above decide pass, fail or skip in the live tests, so they get
+# offline checks of their own.
+
+
+def test_result_line_reads_name_and_kind_even_with_brackets_in_the_name():
+    text = format_attractions_report(
+        make_report(
+            attraction("Ravana Falls (Ella)", "waterfall", 5.1),
+            attraction("Ella Gap", "viewpoint", 0.6),
+        )
+    )
+    matches = [(m["name"], m["kind"]) for m in RESULT_LINE.finditer(text)]
+    assert matches == [
+        ("Ravana Falls (Ella)", "waterfall"),
+        ("Ella Gap", "viewpoint"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        respond(429),
+        respond(504),
+        respond(200, json={"elements": [], "remark": "runtime error: timed out"}),
+        raising(httpx.ReadTimeout("slow")),
+        respond(502),
+        respond(503),
+    ],
+    ids=["429", "504", "runtime-error-remark", "client-timeout", "502", "503"],
+)
+def test_busy_overpass_results_are_recognised(monkeypatch, handler):
+    overpass_fails_with(monkeypatch, handler)
+    assert _overpass_temporarily_unavailable(
+        find_attractions.invoke({"destination": "Ella"})
+    )
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        respond(400),
+        respond(500),
+        respond(200, text="not json"),
+        raising(httpx.ConnectError("refused")),
+    ],
+    ids=["400", "500", "not-json", "connect-error"],
+)
+def test_other_overpass_failures_are_not_called_busy(monkeypatch, handler):
+    overpass_fails_with(monkeypatch, handler)
+    text = find_attractions.invoke({"destination": "Ella"})
+    assert text.startswith("Attractions unavailable")
+    assert not _overpass_temporarily_unavailable(text)
+
+
+@pytest.mark.live
+def test_live_find_attractions_tool_nature_near_ella():
+    """O2: the tool end to end, no Gemini. 1 geocoding + 1 Overpass request."""
+    text = find_attractions.invoke({"destination": "Ella", "category": "nature"})
+
+    if _overpass_temporarily_unavailable(text):
+        pytest.skip(f"{INCONCLUSIVE}: {text.splitlines()[0]}")
+    assert text.startswith("Attractions near"), text
+    assert "category: nature" in text
+    kinds = [match["kind"] for match in RESULT_LINE.finditer(text)]
+    assert kinds, f"expected at least one nature attraction near Ella:\n{text}"
+    assert set(kinds) <= NATURE_KINDS, text
+    assert "Distances are straight-line" in text
+    assert ATTRACTIONS_SOURCE in text
+
+
+@pytest.mark.live
+def test_live_culture_attractions_near_kandy():
+    """O3: the service, no Gemini. 1 geocoding + 1 Overpass request."""
+    try:
+        report = get_attractions_report("Kandy", "culture")
+    except AttractionsServiceError as exc:
+        if _overpass_temporarily_unavailable(str(exc)):
+            pytest.skip(f"{INCONCLUSIVE}: {exc}")
+        raise
+
+    assert report.location.country == "Sri Lanka"
+    assert report.attractions, "expected at least one culture attraction in Kandy"
+    assert {a.kind for a in report.attractions} <= CULTURE_KINDS, report.attractions
+    distances = [a.distance_km for a in report.attractions]
+    assert distances == sorted(distances)
+    assert len(report.attractions) <= attractions_service.DEFAULT_LIMIT
+    assert report.total_found >= len(report.attractions)
+
+
+@pytest.mark.live
+def test_live_unknown_place_fails_before_overpass():
+    """O4: 1 geocoding request and NO Overpass request.
+
+    If this ever fails because the geocoder fuzzy-matched the made-up name to a
+    real place, pick another nonsense name; the code is not at fault.
+    """
+    sent: list[str] = []
+    with make_client() as client:
+        client.event_hooks = {"request": [lambda r: sent.append(str(r.url))]}
+        with pytest.raises(AttractionsLocationNotFoundError):
+            get_attractions_report("Xyzzyqq Vrrnk", client=client)
+
+    assert len(sent) == 1, sent
+    assert sent[0].startswith(GEOCODING_URL)
+    assert not any(url.startswith(OVERPASS_URL) for url in sent)
