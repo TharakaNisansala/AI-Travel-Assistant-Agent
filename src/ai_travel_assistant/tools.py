@@ -19,6 +19,12 @@ Stage 4 adds get_weather_forecast, the first tool backed by a real external API
 as a tool and formats the result for the LLM. Try it (2 HTTP requests, no Gemini):
     uv run python -c "from ai_travel_assistant.tools import get_weather_forecast; \
 print(get_weather_forecast.invoke({'destination': 'Ella'}))"
+
+find_attractions wraps attractions_service.py (OpenStreetMap via Overpass) the
+same way. Its `category` argument is a Literal, so the LLM sees it as an enum of
+four values. Try it (2 HTTP requests, no Gemini):
+    uv run python -c "from ai_travel_assistant.tools import find_attractions; \
+print(find_attractions.invoke({'destination': 'Ella', 'category': 'nature'}))"
 """
 
 from __future__ import annotations
@@ -29,7 +35,12 @@ from datetime import date
 
 from langchain_core.tools import tool
 
-from ai_travel_assistant import weather_service
+from ai_travel_assistant import attractions_service, weather_service
+from ai_travel_assistant.attractions_service import (
+    AttractionsReport,
+    AttractionsServiceError,
+    Category,
+)
 from ai_travel_assistant.weather_service import WeatherReport, WeatherServiceError
 
 # --- The offline dataset ------------------------------------------------------
@@ -342,3 +353,91 @@ def get_weather_forecast(destination: str, country_code: str = "LK") -> str:
             "do not guess the weather."
         )
     return format_weather_report(report)
+
+
+# --- Attractions (Stage 4: OpenStreetMap via Overpass) ------------------------
+
+ATTRACTIONS_SOURCE = (
+    "Source: OpenStreetMap via the Overpass API (© OpenStreetMap contributors)."
+)
+
+
+def format_attractions_report(report: AttractionsReport) -> str:
+    """Turn an AttractionsReport into the short text the LLM will read.
+
+    One line per attraction (name, kind, distance), plus the search scope, so
+    the LLM knows what was searched and how much was left out. No raw JSON,
+    OSM ids or tags: they cost context and add nothing to the answer.
+    """
+    place = report.location.label
+    radius = f"{report.radius_m / 1000:g} km"
+    shown = len(report.attractions)
+
+    if shown == 0:
+        lines = [
+            f"No named attractions found in OpenStreetMap within {radius} of "
+            f"{place} (category: {report.category})."
+        ]
+        if report.category != "all":
+            lines.append("Try again with category 'all' for a wider search.")
+        lines.append("Tell the traveller none were found; do not invent attractions.")
+        lines.append(ATTRACTIONS_SOURCE)
+        return "\n".join(lines)
+
+    lines = [
+        f"Attractions near {place}; category: {report.category}; "
+        f"within {radius}; nearest first:"
+    ]
+    for attraction in report.attractions:
+        lines.append(
+            f"- {attraction.name} ({attraction.kind}), {attraction.distance_km:.1f} km"
+        )
+    if report.total_found > shown:
+        lines.append(f"Showing the {shown} nearest of {report.total_found} found.")
+    lines.append("Distances are straight-line, not travel distance.")
+    lines.append(ATTRACTIONS_SOURCE)
+    return "\n".join(lines)
+
+
+# `category` is typed with the service's Literal, so the schema sent to the LLM
+# is an enum of exactly the categories the service supports. A value outside it
+# is rejected by the schema before this function runs, and ToolNode returns that
+# error to the LLM. Expected runtime failures (unknown place, timeout, Overpass
+# busy) are caught here and returned as text, like get_weather_forecast.
+
+
+@tool
+def find_attractions(
+    destination: str, category: Category = "all", country_code: str = "LK"
+) -> str:
+    """Find real attractions near a destination, from OpenStreetMap.
+
+    Use this when the traveller asks what to see or do in or around a place,
+    or when planning sightseeing for a trip. Searches within 5 km of the place
+    and returns up to 8 named attractions, nearest first, each with its kind
+    (e.g. waterfall, viewpoint, temple, museum) and straight-line distance in
+    km, or a message explaining why none could be found. It does NOT cover
+    hotels, restaurants, shops or hiking routes.
+
+    Args:
+        destination: Only the place name, e.g. "Ella" or "Kandy".
+        category: What kind of attractions to find:
+            "nature" - waterfalls, peaks and viewpoints;
+            "culture" - museums, historic sites and notable places of worship;
+            "landmarks" - places mapped as tourist attractions;
+            "all" - every category above (default).
+        country_code: Two-letter ISO country code of the place. Defaults to
+            "LK" (Sri Lanka); use another code such as "IN" for places
+            outside Sri Lanka.
+    """
+    try:
+        report = attractions_service.get_attractions_report(
+            destination, category, country_code
+        )
+    except AttractionsServiceError as exc:
+        return (
+            f"Attractions unavailable for '{destination}': {exc} "
+            "Tell the traveller the attractions could not be retrieved; "
+            "do not invent attractions."
+        )
+    return format_attractions_report(report)
