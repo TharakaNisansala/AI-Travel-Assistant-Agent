@@ -1,4 +1,4 @@
-"""Stage 4 checks: the Overpass attractions service.
+"""Stage 4 checks: the Overpass attractions service and its find_attractions tool.
 
 The offline tests never touch the internet. httpx.MockTransport stands in for
 the network: our handler receives each request and returns a prepared response
@@ -17,15 +17,21 @@ from urllib.parse import parse_qs
 
 import httpx
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.utils.function_calling import convert_to_openai_tool
+from pydantic import ValidationError
 
 from ai_travel_assistant import attractions_service
 from ai_travel_assistant.attractions_service import (
     CATEGORIES,
     OVERPASS_URL,
+    Attraction,
     AttractionsBusyError,
     AttractionsHTTPError,
     AttractionsLocationNotFoundError,
     AttractionsNetworkError,
+    AttractionsReport,
     AttractionsServiceError,
     AttractionsTimeoutError,
     InvalidAttractionsResponseError,
@@ -36,6 +42,8 @@ from ai_travel_assistant.attractions_service import (
     make_client,
     parse_attractions,
 )
+from ai_travel_assistant.tool_calling import build_tool_agent_graph
+from ai_travel_assistant.tools import find_attractions, format_attractions_report
 from ai_travel_assistant.weather_service import GEOCODING_URL, USER_AGENT, Location
 
 # --- Sample data --------------------------------------------------------------
@@ -358,7 +366,248 @@ def test_runtime_error_remark_with_http_200_is_not_treated_as_no_results():
         fetch_attractions(ELLA, client=client_for(respond(200, json=body)))
 
 
-# --- 5. Live (real APIs, opt-in) ----------------------------------------------
+# --- 5. The find_attractions tool (still offline) -----------------------------
+
+
+@pytest.fixture
+def fake_apis(monkeypatch) -> FakeAPIs:
+    """Route the tool's own HTTP client to a FakeAPIs."""
+    api = FakeAPIs()
+    monkeypatch.setattr(attractions_service, "make_client", api.client)
+    return api
+
+
+def overpass_fails_with(monkeypatch, handler) -> None:
+    """Geocoding succeeds; every Overpass request goes to `handler`."""
+
+    def route(request: httpx.Request) -> httpx.Response:
+        if str(request.url.copy_with(query=None)) == GEOCODING_URL:
+            return httpx.Response(200, json=ELLA_GEOCODING)
+        return handler(request)
+
+    monkeypatch.setattr(attractions_service, "make_client", lambda: client_for(route))
+
+
+def attraction(name: str, kind: str, km: float) -> Attraction:
+    return Attraction(name, kind, 6.87, 81.05, km)
+
+
+def make_report(*attractions: Attraction, category="all", total=None):
+    return AttractionsReport(
+        location=ELLA,
+        category=category,
+        radius_m=5000,
+        attractions=attractions,
+        total_found=len(attractions) if total is None else total,
+    )
+
+
+class ToolCallingFake(GenericFakeChatModel):
+    """A scripted chat model that accepts bind_tools(), so the real graph runs."""
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+
+# Schema: what bind_tools() sends to the LLM.
+
+
+def test_tool_has_name_description_and_arguments():
+    assert find_attractions.name == "find_attractions"
+    assert "attractions" in find_attractions.description.lower()
+    assert set(find_attractions.args) == {"destination", "category", "country_code"}
+
+
+def test_category_is_an_enum_of_the_service_categories():
+    schema = convert_to_openai_tool(find_attractions)["function"]["parameters"]
+    category = schema["properties"]["category"]
+    assert category["enum"] == list(CATEGORIES)
+    assert category["default"] == "all"
+    # Only the destination is required; the LLM may leave the others out.
+    assert schema["required"] == ["destination"]
+
+
+def test_docstring_explains_every_category_and_what_is_not_covered():
+    description = find_attractions.description
+    for name in CATEGORIES:
+        assert f'"{name}"' in description
+    assert "NOT cover" in description
+
+
+def test_docstring_numbers_match_the_service_defaults():
+    # The docstring is the LLM's only manual; it must not drift from the code.
+    radius_km = f"{attractions_service.DEFAULT_RADIUS_M / 1000:g} km"
+    assert f"within {radius_km}" in find_attractions.description
+    assert f"up to {attractions_service.DEFAULT_LIMIT} " in find_attractions.description
+
+
+# Success: the tool calls the service and formats the result.
+
+
+def test_tool_returns_compact_attractions_nearest_first(fake_apis):
+    text = find_attractions.invoke({"destination": "Ella"})
+
+    lines = text.splitlines()
+    assert lines[0] == (
+        "Attractions near Ella Town (Badulla District, Uva Province, Sri Lanka); "
+        "category: all; within 5 km; nearest first:"
+    )
+    # 5 named, de-duplicated attractions from the 8 sample elements.
+    assert lines[1:6] == [
+        "- Ella Viharaya (temple), 1.4 km",
+        "- Nine Arches Bridge (attraction), 1.6 km",
+        "- Ravana Cave (archaeological site), 1.7 km",
+        "- Little Adam's Peak (viewpoint), 1.8 km",
+        "- Ravana Falls (waterfall), 3.7 km",
+    ]
+    assert lines[-1].startswith("Source: OpenStreetMap")
+    assert "straight-line" in text
+
+
+def test_tool_output_has_no_raw_json_ids_or_coordinates(fake_apis):
+    text = find_attractions.invoke({"destination": "Ella"})
+    for noise in ("{", '"elements"', "wikidata", "6.8424", "81.0516", "node"):
+        assert noise not in text
+
+
+def test_tool_passes_category_and_country_to_the_service(fake_apis):
+    find_attractions.invoke({"destination": "Ella", "category": "nature"})
+
+    geocoding = next(r for r in fake_apis.requests if r.method == "GET")
+    assert geocoding.url.params["countryCode"] == "LK"  # the default
+    query = fake_apis.overpass_query()
+    assert '"natural"~' in query and '"tourism"="viewpoint"' in query
+    assert "museum" not in query  # culture filters were not sent
+
+
+def test_tool_passes_a_non_default_country_to_the_geocoder(fake_apis):
+    find_attractions.invoke({"destination": "Ooty", "country_code": "IN"})
+    geocoding = next(r for r in fake_apis.requests if r.method == "GET")
+    assert geocoding.url.params["name"] == "Ooty"
+    assert geocoding.url.params["countryCode"] == "IN"
+
+
+def test_bad_category_is_rejected_by_the_schema_before_any_request(fake_apis):
+    with pytest.raises(ValidationError):
+        find_attractions.invoke({"destination": "Ella", "category": "nightlife"})
+    assert fake_apis.requests == []
+
+
+def test_agent_gets_a_fixable_error_for_a_bad_category(fake_apis):
+    # Inside the agent, ToolNode turns the schema error into a ToolMessage, so
+    # the LLM can correct itself instead of the run crashing.
+    bad_call = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "find_attractions",
+                "args": {"destination": "Ella", "category": "nightlife"},
+                "id": "call_1",
+            }
+        ],
+    )
+    model = ToolCallingFake(messages=iter([bad_call, AIMessage("Sorry.")]))
+    graph = build_tool_agent_graph(model, tools=[find_attractions])
+
+    result = graph.invoke({"messages": [HumanMessage("Nightlife in Ella?")]})
+
+    reply = result["messages"][2]
+    assert isinstance(reply, ToolMessage) and reply.status == "error"
+    assert "Input should be 'all', 'nature', 'culture' or 'landmarks'" in reply.content
+    assert fake_apis.requests == []
+
+
+# Formatting edge cases (no network at all).
+
+
+def test_truncated_results_say_how_many_were_found():
+    report = make_report(
+        attraction("Ravana Cave", "archaeological site", 1.71),
+        attraction("Ella Viharaya", "temple", 2.04),
+        total=23,
+    )
+    text = format_attractions_report(report)
+    assert "Showing the 2 nearest of 23 found." in text
+    assert "- Ravana Cave (archaeological site), 1.7 km" in text
+
+
+def test_complete_results_have_no_showing_line():
+    text = format_attractions_report(make_report(attraction("A", "museum", 1.0)))
+    assert "Showing" not in text
+
+
+def test_output_stays_one_line_per_attraction_plus_three():
+    many = [attraction(f"Place {i}", "viewpoint", i / 2) for i in range(8)]
+    text = format_attractions_report(make_report(*many, total=40))
+    # header + 8 items + "Showing..." + "straight-line" + "Source"
+    assert len(text.splitlines()) == 1 + 8 + 3
+
+
+def test_no_results_for_a_category_suggests_all_and_forbids_inventing():
+    text = format_attractions_report(make_report(category="nature"))
+    assert text.startswith("No named attractions found in OpenStreetMap within 5 km")
+    assert "category: nature" in text
+    assert "Try again with category 'all'" in text
+    assert "do not invent attractions" in text
+    assert text.splitlines()[-1].startswith("Source: OpenStreetMap")
+
+
+def test_no_results_for_all_does_not_suggest_all_again():
+    text = format_attractions_report(make_report(category="all"))
+    assert "Try again" not in text
+    assert "do not invent attractions" in text
+
+
+def test_tool_reports_empty_overpass_result_as_none_found(monkeypatch):
+    api = FakeAPIs(overpass={"elements": []})
+    monkeypatch.setattr(attractions_service, "make_client", api.client)
+    text = find_attractions.invoke({"destination": "Ella", "category": "culture"})
+    assert text.startswith("No named attractions found")
+
+
+# Failures come back as text the LLM can act on, never as exceptions.
+
+
+@pytest.mark.parametrize(
+    ("handler", "expected"),
+    [
+        (raising(httpx.ReadTimeout("slow")), "did not respond within 30"),
+        (raising(httpx.ConnectError("offline")), "Could not connect"),
+        (respond(429), "busy (HTTP 429)"),
+        (respond(200, text="not json"), "not JSON"),
+    ],
+    ids=["timeout", "offline", "busy", "invalid"],
+)
+def test_tool_reports_service_failures_instead_of_raising(
+    monkeypatch, handler, expected
+):
+    overpass_fails_with(monkeypatch, handler)
+    text = find_attractions.invoke({"destination": "Ella"})
+    assert text.startswith("Attractions unavailable for 'Ella':")
+    assert expected in text
+    assert "do not invent attractions" in text
+
+
+def test_tool_explains_an_unknown_destination(monkeypatch):
+    api = FakeAPIs(geocoding={"generationtime_ms": 0.1})
+    monkeypatch.setattr(attractions_service, "make_client", api.client)
+    text = find_attractions.invoke({"destination": "Atlantis"})
+    assert text.startswith("Attractions unavailable for 'Atlantis'")
+    assert "do not invent attractions" in text
+    assert len(api.requests) == 1  # Overpass was never asked
+
+
+def test_programming_errors_are_not_hidden(monkeypatch):
+    # Only expected failures become text; a real bug must still surface.
+    def broken(*args, **kwargs):
+        raise TypeError("bug")
+
+    monkeypatch.setattr(attractions_service, "get_attractions_report", broken)
+    with pytest.raises(TypeError):
+        find_attractions.invoke({"destination": "Ella"})
+
+
+# --- 6. Live (real APIs, opt-in) ----------------------------------------------
 
 
 @pytest.mark.live
