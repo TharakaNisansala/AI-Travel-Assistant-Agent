@@ -20,6 +20,7 @@ from ai_travel_assistant import llm_basics, tool_calling
 from ai_travel_assistant.tool_calling import (
     LLM,
     SYSTEM_PROMPT,
+    TOOLS,
     TOOLS_NODE,
     build_tool_agent_graph,
     describe_steps,
@@ -174,6 +175,25 @@ def test_build_binds_every_tool_in_order():
         "get_weather_forecast",
         "find_attractions",
     ]
+
+
+def test_tool_names_are_unique():
+    names = [t.name for t in TOOLS]
+    assert len(names) == len(set(names))
+
+
+def test_system_prompt_gives_guidance_for_every_tool():
+    # A registered tool with no selection guidance is easy to miss when adding
+    # a tool; this catches it.
+    for tool in TOOLS:
+        assert tool.name in SYSTEM_PROMPT, f"{tool.name} is not in SYSTEM_PROMPT"
+
+
+def test_graph_can_run_every_registered_tool():
+    # ToolNode only runs tools it was given: it must hold exactly TOOLS.
+    graph = build_tool_agent_graph(scripted())
+    tool_node = graph.nodes[TOOLS_NODE].bound
+    assert set(tool_node.tools_by_name) == {t.name for t in TOOLS}
 
 
 def test_tool_call_then_final_answer():

@@ -42,7 +42,13 @@ from ai_travel_assistant.attractions_service import (
     make_client,
     parse_attractions,
 )
-from ai_travel_assistant.tool_calling import build_tool_agent_graph
+from ai_travel_assistant.tool_calling import (
+    SYSTEM_PROMPT,
+    build_tool_agent_graph,
+    describe_steps,
+    final_answer,
+    run_tool_agent,
+)
 from ai_travel_assistant.tools import find_attractions, format_attractions_report
 from ai_travel_assistant.weather_service import GEOCODING_URL, USER_AGENT, Location
 
@@ -403,10 +409,29 @@ def make_report(*attractions: Attraction, category="all", total=None):
 
 
 class ToolCallingFake(GenericFakeChatModel):
-    """A scripted chat model that accepts bind_tools(), so the real graph runs."""
+    """A scripted chat model that accepts bind_tools(), so the real graph runs.
+
+    Records the tools it was given and the messages it received on each call,
+    so tests can check what the LLM "saw" at every step.
+    """
+
+    bound_tools: list = []
+    calls: list = []
 
     def bind_tools(self, tools, **kwargs):
+        self.bound_tools = list(tools)
         return self
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.calls.append(list(messages))
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+def tool_call(name: str, args: dict, call_id: str) -> AIMessage:
+    """What a tool-calling LLM returns when it wants one tool run."""
+    return AIMessage(
+        content="", tool_calls=[{"name": name, "args": args, "id": call_id}]
+    )
 
 
 # Schema: what bind_tools() sends to the LLM.
@@ -607,7 +632,107 @@ def test_programming_errors_are_not_hidden(monkeypatch):
         find_attractions.invoke({"destination": "Ella"})
 
 
-# --- 6. Live (real APIs, opt-in) ----------------------------------------------
+# --- 6. The agent using find_attractions (scripted model, offline) ------------
+
+
+def test_agent_binds_the_attractions_tool():
+    # Membership only: the exact tool list is checked once, in test_tool_calling.
+    model = ToolCallingFake(messages=iter([]))
+    build_tool_agent_graph(model)
+    assert find_attractions in model.bound_tools
+
+
+def test_agent_trajectory_search_then_attractions_then_answer(fake_apis):
+    # The chain SYSTEM_PROMPT describes: choose a place with search_destinations,
+    # then call find_attractions for the ONE best place (not every result), then
+    # answer. The scripted model follows it; this checks our wiring, not Gemini.
+    assert "for the one place that fits best, not for every result" in SYSTEM_PROMPT
+    model = ToolCallingFake(
+        messages=iter(
+            [
+                tool_call("search_destinations", {"query": "hiking"}, "call_s1"),
+                tool_call(
+                    "find_attractions",
+                    {"destination": "Ella", "category": "nature"},
+                    "call_a1",
+                ),
+                AIMessage("Go to Ella: Little Adam's Peak is 1.8 km away."),
+            ]
+        )
+    )
+    graph = build_tool_agent_graph(model)
+
+    messages = run_tool_agent(graph, "Where can I hike, and what is there to see?")
+
+    # Trajectory: Human -> AI -> Tool -> AI -> Tool -> AI (final answer)
+    assert [type(m) for m in messages] == [
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        AIMessage,
+        ToolMessage,
+        AIMessage,
+    ]
+    search_result, attractions_result = messages[2], messages[4]
+    assert (search_result.name, search_result.tool_call_id) == (
+        "search_destinations",
+        "call_s1",
+    )
+    assert (attractions_result.name, attractions_result.tool_call_id) == (
+        "find_attractions",
+        "call_a1",
+    )
+    assert search_result.status == attractions_result.status == "success"
+    assert "Ella" in search_result.content
+    assert attractions_result.content.startswith("Attractions near Ella Town")
+    assert "category: nature" in attractions_result.content
+
+    # Only find_attractions used the (fake) network: geocode, then Overpass.
+    assert [r.method for r in fake_apis.requests] == ["GET", "POST"]
+    assert '"natural"~' in fake_apis.overpass_query()
+
+    # The LLM ran three times, each time with the system prompt, and each later
+    # call ended with the newest tool result (Observe).
+    assert len(model.calls) == 3
+    assert all(call[0].content == SYSTEM_PROMPT for call in model.calls)
+    assert model.calls[1][-1].content == search_result.content
+    assert model.calls[2][-1].content == attractions_result.content
+
+    assert describe_steps(messages) == [
+        "[human] Where can I hike, and what is there to see?",
+        "[llm -> tool call] search_destinations({'query': 'hiking'})",
+        f"[tool result] {search_result.content.splitlines()[0]} ...",
+        "[llm -> tool call] find_attractions("
+        "{'destination': 'Ella', 'category': 'nature'})",
+        f"[tool result] {attractions_result.content.splitlines()[0]} ...",
+        "[llm -> final answer]",
+    ]
+    assert final_answer(messages).startswith("Go to Ella")
+
+
+def test_agent_survives_an_overpass_outage(monkeypatch):
+    overpass_fails_with(monkeypatch, respond(504))
+    model = ToolCallingFake(
+        messages=iter(
+            [
+                tool_call("find_attractions", {"destination": "Ella"}, "call_a1"),
+                AIMessage("Sorry, I could not look up attractions right now."),
+            ]
+        )
+    )
+
+    messages = run_tool_agent(build_tool_agent_graph(model), "What to see in Ella?")
+
+    # The failure is an ordinary tool result (status "success": the tool ran and
+    # returned text), unlike a schema error, which ToolNode marks "error".
+    tool_message = messages[2]
+    assert tool_message.status == "success"
+    assert tool_message.content.startswith("Attractions unavailable for 'Ella'")
+    assert "busy (HTTP 504)" in tool_message.content
+    assert final_answer(messages).startswith("Sorry")
+
+
+# --- 7. Live (real APIs, opt-in)----------------------------------------------
 
 
 @pytest.mark.live
