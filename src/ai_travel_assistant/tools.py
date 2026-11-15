@@ -25,6 +25,22 @@ same way. Its `category` argument is a Literal, so the LLM sees it as an enum of
 four values. Try it (2 HTTP requests, no Gemini):
     uv run python -c "from ai_travel_assistant.tools import find_attractions; \
 print(find_attractions.invoke({'destination': 'Ella', 'category': 'nature'}))"
+
+Three more tools complete the Stage 4 suite, each wrapping its own service:
+  - get_destination_guide (guide_service.py, Wikivoyage): background prose,
+    trimmed by `topic` so a 30,000-character article costs ~1,000 tokens.
+  - estimate_travel_time (travel_service.py, OSRM): road distance and driving
+    time between two places.
+  - convert_currency (currency_service.py, ExchangeRate-API): the arithmetic is
+    done in code, never by the LLM.
+Try them (no Gemini):
+    uv run python -c "from ai_travel_assistant.tools import get_destination_guide; \
+print(get_destination_guide.invoke({'destination': 'Ella', 'topic': 'see_and_do'}))"
+    uv run python -c "from ai_travel_assistant.tools import estimate_travel_time; \
+print(estimate_travel_time.invoke({'origin': 'Ella', 'destination': 'Kandy'}))"
+    uv run python -c "from ai_travel_assistant.tools import convert_currency; \
+print(convert_currency.invoke({'amount': 100, 'from_currency': 'USD', \
+'to_currency': 'LKR'}))"
 """
 
 from __future__ import annotations
@@ -35,12 +51,26 @@ from datetime import date
 
 from langchain_core.tools import tool
 
-from ai_travel_assistant import attractions_service, weather_service
+from ai_travel_assistant import (
+    attractions_service,
+    currency_service,
+    guide_service,
+    travel_service,
+    weather_service,
+)
 from ai_travel_assistant.attractions_service import (
     AttractionsReport,
     AttractionsServiceError,
     Category,
 )
+from ai_travel_assistant.currency_service import Conversion, CurrencyServiceError
+from ai_travel_assistant.guide_service import (
+    DestinationGuide,
+    GuideAmbiguousError,
+    GuideServiceError,
+    Topic,
+)
+from ai_travel_assistant.travel_service import TravelEstimate, TravelServiceError
 from ai_travel_assistant.weather_service import WeatherReport, WeatherServiceError
 
 # --- The offline dataset ------------------------------------------------------
@@ -441,3 +471,203 @@ def find_attractions(
             "do not invent attractions."
         )
     return format_attractions_report(report)
+
+
+# --- Destination guide (Stage 4: Wikivoyage) ----------------------------------
+
+GUIDE_SOURCE = (
+    "Source: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables "
+    "and transport details may be out of date."
+)
+TOPIC_LABELS = {
+    "overview": "overview",
+    "getting_there": "getting there",
+    "getting_around": "getting around",
+    "see_and_do": "see and do",
+    "safety": "safety and health",
+}
+
+
+def format_destination_guide(guide: DestinationGuide) -> str:
+    """Turn a DestinationGuide into the text the LLM will read.
+
+    One short paragraph per section, a note on what the article lacks (so the
+    LLM does not fill the gap from memory), and the source with its caveat.
+    """
+    topic = "all topics" if guide.topic == "all" else TOPIC_LABELS[guide.topic]
+    lines = [f"Wikivoyage guide for {guide.title} ({topic}):"]
+    if not guide.sections:
+        lines.append("The article has nothing on this topic.")
+    for section in guide.sections:
+        lines.append(f"[{section.title}] {section.text}")
+    if guide.missing:
+        labels = ", ".join(TOPIC_LABELS[t] for t in guide.missing)
+        lines.append(f"Not covered by this article: {labels}. Do not fill this in.")
+    if any(section.truncated for section in guide.sections):
+        lines.append(
+            f"Sections ending in ... were shortened; full article: {guide.url}"
+        )
+    else:
+        lines.append(f"Full article: {guide.url}")
+    lines.append(GUIDE_SOURCE)
+    return "\n".join(lines)
+
+
+@tool
+def get_destination_guide(destination: str, topic: Topic = "all") -> str:
+    """Get travel-guide background on a destination from Wikivoyage.
+
+    Use this when the traveller asks what a place is like, how to get there,
+    how to get around, practical or safety tips, or wants background while
+    planning a trip. Returns short excerpts of the place's Wikivoyage article
+    for the chosen topic, or a message explaining why no guide was found
+    (if the name matches several places, the message lists the article names
+    to retry with). Guide text can be out of date and has no live data: use
+    get_weather_forecast for weather and find_attractions for a list of
+    nearby sights with distances.
+
+    Args:
+        destination: Only the place name as Wikivoyage titles it, e.g. "Ella",
+            "Kandy" or "Nuwara Eliya".
+        topic: Which part of the guide to return:
+            "overview" - what the place is like;
+            "getting_there" - how to reach it (train, bus, air);
+            "getting_around" - local transport;
+            "see_and_do" - sights and activities;
+            "safety" - safety and health tips;
+            "all" - a shorter excerpt of every topic above (default).
+    """
+    try:
+        guide = guide_service.get_destination_guide(destination, topic)
+    except GuideAmbiguousError as exc:
+        return (
+            f"Guide unavailable for '{destination}': {exc} "
+            "If one of these is the place the traveller means, call this tool "
+            "again with that exact name; otherwise ask the traveller which one."
+        )
+    except GuideServiceError as exc:
+        return (
+            f"Guide unavailable for '{destination}': {exc} "
+            "Tell the traveller the guide could not be retrieved; "
+            "do not make up guide information."
+        )
+    return format_destination_guide(guide)
+
+
+# --- Travel time (Stage 4: OSRM) ----------------------------------------------
+
+TRAVEL_SOURCE = (
+    "Source: OSRM routing on OpenStreetMap roads (© OpenStreetMap contributors)."
+)
+
+
+def _duration(minutes: float) -> str:
+    """159.6 -> "2 h 40 min"; 45.2 -> "45 min"."""
+    total = max(1, round(minutes))
+    hours, mins = divmod(total, 60)
+    if hours == 0:
+        return f"{mins} min"
+    return f"{hours} h {mins} min" if mins else f"{hours} h"
+
+
+def format_travel_estimate(estimate: TravelEstimate) -> str:
+    """Turn a TravelEstimate into the short text the LLM will read."""
+    return "\n".join(
+        [
+            f"Road trip from {estimate.origin.label} to {estimate.destination.label}:",
+            f"- Road distance: {estimate.road_distance_km:.0f} km "
+            f"(straight line {estimate.straight_line_km:.0f} km).",
+            f"- Driving time: about {_duration(estimate.duration_min)} by car "
+            "without traffic or stops.",
+            "This is a free-flow car estimate: real journeys, especially on hill "
+            "roads or by bus, tuk-tuk or train, usually take longer. Say so.",
+            TRAVEL_SOURCE,
+        ]
+    )
+
+
+@tool
+def estimate_travel_time(
+    origin: str, destination: str, country_code: str = "LK"
+) -> str:
+    """Estimate the road distance and driving time between two places (OSRM).
+
+    Use this when the traveller asks how far apart two places are, how long it
+    takes to get from one to the other, or when ordering stops in a multi-place
+    trip. Returns the road distance in km and a car driving time without
+    traffic, or a message explaining why no route was found. It does NOT give
+    train or bus timetables (get_destination_guide's getting_there topic may
+    describe those).
+
+    Args:
+        origin: Only the starting place name, e.g. "Ella".
+        destination: Only the destination place name, e.g. "Kandy".
+        country_code: Two-letter ISO country code of both places. Defaults to
+            "LK" (Sri Lanka).
+    """
+    try:
+        estimate = travel_service.get_travel_estimate(origin, destination, country_code)
+    except TravelServiceError as exc:
+        return (
+            f"Travel time unavailable from '{origin}' to '{destination}': {exc} "
+            "Tell the traveller the estimate could not be retrieved; "
+            "do not guess distances or times."
+        )
+    return format_travel_estimate(estimate)
+
+
+# --- Currency (Stage 4: ExchangeRate-API) -------------------------------------
+
+CURRENCY_SOURCE = (
+    "Source: Rates By Exchange Rate API (https://www.exchangerate-api.com)."
+)
+
+
+def _money(value: float) -> str:
+    """33255.98 -> "33,255.98"; tiny values keep enough digits to be useful."""
+    if value != 0 and abs(value) < 0.01:
+        return f"{value:.6f}"
+    return f"{value:,.2f}"
+
+
+def format_conversion(conversion: Conversion) -> str:
+    """Turn a Conversion into the short text the LLM will read."""
+    c = conversion
+    lines = [
+        f"{_money(c.amount)} {c.from_code} = {_money(c.converted)} {c.to_code}",
+        f"Rate used: 1 {c.from_code} = {c.rate:.6g} {c.to_code}"
+        + (f" (updated {c.updated_utc})." if c.updated_utc else "."),
+    ]
+    if c.from_code != c.to_code:
+        lines.append(
+            "Indicative mid-market rate: banks, cards and money changers "
+            "charge a margin, so the traveller will get somewhat less."
+        )
+        lines.append(CURRENCY_SOURCE)
+    return "\n".join(lines)
+
+
+@tool
+def convert_currency(amount: float, from_currency: str, to_currency: str) -> str:
+    """Convert an amount of money between currencies at today's exchange rate.
+
+    Use this whenever the traveller asks what a price is worth in another
+    currency, how much money to bring, or about exchange rates, e.g. US dollars
+    to Sri Lankan rupees. Returns the converted amount and the rate used
+    (updated daily), or a message explaining why it failed. Always use this
+    instead of a remembered exchange rate.
+
+    Args:
+        amount: The amount to convert, e.g. 100 or 2500.50.
+        from_currency: Three-letter ISO 4217 code of the amount, e.g. "USD".
+        to_currency: Three-letter ISO 4217 code to convert to, e.g. "LKR".
+    """
+    try:
+        conversion = currency_service.convert(amount, from_currency, to_currency)
+    except CurrencyServiceError as exc:
+        return (
+            f"Currency conversion unavailable: {exc} "
+            "Tell the traveller the conversion could not be done; "
+            "do not use a remembered exchange rate."
+        )
+    return format_conversion(conversion)
