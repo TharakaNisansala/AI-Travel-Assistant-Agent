@@ -33,6 +33,7 @@ from typing import Literal, get_args
 import httpx
 
 from ai_travel_assistant import weather_service
+from ai_travel_assistant.resilience import TTLCache, send_with_retry
 from ai_travel_assistant.weather_service import (
     USER_AGENT,
     Location,
@@ -52,6 +53,8 @@ QUERY_TIMEOUT_S = 25
 # ...so the client waits a little longer, to receive that message instead of
 # cutting the connection first.
 REQUEST_TIMEOUT = 30.0
+# Mapped attractions change rarely; an hour avoids re-asking a busy server.
+ATTRACTIONS_CACHE = TTLCache("overpass attractions", ttl_s=3600)
 
 # --- Categories ---------------------------------------------------------------
 # A fixed list (not free text), so the tool can expose it to the LLM as an enum.
@@ -182,7 +185,12 @@ def make_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
 def _post_query(client: httpx.Client, query: str) -> dict:
     """POST an Overpass query and return its JSON object, or raise."""
     try:
-        response = client.post(OVERPASS_URL, data={"data": query})
+        # Retries 429/502/503/504 once, but not timeouts: after 30 s of waiting,
+        # a second 30 s attempt would make the chat turn feel stuck.
+        response = send_with_retry(
+            lambda: client.post(OVERPASS_URL, data={"data": query}),
+            retry_timeouts=False,
+        )
     # TimeoutException is a kind of TransportError, so it must be caught first.
     except httpx.TimeoutException as exc:
         raise AttractionsTimeoutError(
@@ -345,16 +353,22 @@ def fetch_attractions(
     limit: int = DEFAULT_LIMIT,
 ) -> AttractionsReport:
     """Search Overpass around an already-geocoded location (1 HTTP request)."""
+    cache_key = (location, category, radius_m, limit)
+    cached = ATTRACTIONS_CACHE.get(cache_key)
+    if cached is not TTLCache.MISSING:
+        return cached
     query = build_query(location, category, radius_m)
     data = _post_query(client, query)
     found = parse_attractions(data, location)
-    return AttractionsReport(
+    report = AttractionsReport(
         location=location,
         category=category,
         radius_m=radius_m,
         attractions=tuple(found[:limit]),
         total_found=len(found),
     )
+    ATTRACTIONS_CACHE.set(cache_key, report)
+    return report
 
 
 def _geocode(destination: str, country_code: str | None, client: httpx.Client):
