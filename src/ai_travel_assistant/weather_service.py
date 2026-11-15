@@ -10,6 +10,7 @@ What this file demonstrates:
      fields we need ever reach the LLM.
   4. Turning every failure (timeout, no network, HTTP error, bad JSON, missing
      data, unknown place) into one typed exception family, WeatherServiceError.
+  5. Retrying temporary failures once and caching results (see resilience.py).
 
 This is the "services" layer from docs/PROJECT_PLAN.md (section 3.6): plain
 Python plus httpx, with no LangChain imports. The @tool wrapper in tools.py
@@ -30,6 +31,8 @@ from typing import Any
 
 import httpx
 
+from ai_travel_assistant.resilience import TTLCache, send_with_retry
+
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -38,6 +41,12 @@ FORECAST_DAYS = 3
 REQUEST_TIMEOUT = 10.0
 # A plain, generic client name. Polite to free APIs, and contains no personal data.
 USER_AGENT = "ai-travel-assistant/0.1 (learning project)"
+
+# Place coordinates do not change, so geocoding results are kept for a day. A
+# forecast changes, but not within minutes. All three location tools geocode
+# through here, so one agent turn about Ella geocodes Ella only once.
+GEOCODE_CACHE = TTLCache("open-meteo geocoding", ttl_s=24 * 3600)
+FORECAST_CACHE = TTLCache("open-meteo forecast", ttl_s=15 * 60)
 
 # The fields we ask Open-Meteo for. Asking only for what we use keeps the
 # response (and the text the LLM reads) small.
@@ -198,7 +207,8 @@ def _get_json(client: httpx.Client, url: str, params: dict[str, Any]) -> dict:
     """GET a URL and return its JSON object, or raise a WeatherServiceError."""
     api = "geocoding" if url == GEOCODING_URL else "forecast"
     try:
-        response = client.get(url, params=params)
+        # Retries timeouts, dropped connections and 429/502/503/504 once.
+        response = send_with_retry(lambda: client.get(url, params=params))
     # TimeoutException is a kind of TransportError, so it must be caught first.
     except httpx.TimeoutException as exc:
         raise WeatherTimeoutError(
@@ -307,6 +317,11 @@ def geocode(
     if code:
         params["countryCode"] = code
 
+    cache_key = (name.casefold(), code)
+    cached = GEOCODE_CACHE.get(cache_key)
+    if cached is not TTLCache.MISSING:
+        return cached
+
     data = _get_json(client, GEOCODING_URL, params)
     # When nothing matches, Open-Meteo leaves the "results" key out entirely.
     results = data.get("results")
@@ -324,7 +339,7 @@ def geocode(
         raise InvalidWeatherResponseError(
             f"The geocoding result for '{name}' has no coordinates."
         )
-    return Location(
+    location = Location(
         name=_text(best.get("name")) or name,
         latitude=latitude,
         longitude=longitude,
@@ -333,6 +348,8 @@ def geocode(
         admin2=_text(best.get("admin2")),
         elevation=_number(best.get("elevation")),
     )
+    GEOCODE_CACHE.set(cache_key, location)
+    return location
 
 
 # --- Forecast -----------------------------------------------------------------
@@ -342,6 +359,10 @@ def fetch_forecast(
     location: Location, *, client: httpx.Client, days: int = FORECAST_DAYS
 ) -> WeatherReport:
     """Get current weather and a daily forecast for a location."""
+    cache_key = (location, days)
+    cached = FORECAST_CACHE.get(cache_key)
+    if cached is not TTLCache.MISSING:
+        return cached
     params = {
         "latitude": location.latitude,
         "longitude": location.longitude,
@@ -357,7 +378,9 @@ def fetch_forecast(
         "precipitation_unit": "mm",
     }
     data = _get_json(client, FORECAST_URL, params)
-    return parse_forecast(data, location)
+    report = parse_forecast(data, location)
+    FORECAST_CACHE.set(cache_key, report)
+    return report
 
 
 def parse_forecast(data: dict, location: Location) -> WeatherReport:
