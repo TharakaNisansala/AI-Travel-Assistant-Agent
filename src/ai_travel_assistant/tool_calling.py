@@ -35,6 +35,12 @@ find_attractions (OpenStreetMap via Overpass, 2 HTTP requests) is added the
 same way. With three tools, SYSTEM_PROMPT says how they relate: search to choose
 a place, attractions for what to see at a named place, weather for forecasts.
 
+The rest of the Stage 4 suite is registered the same way:
+get_destination_guide (Wikivoyage background), estimate_travel_time (OSRM road
+distance and driving time) and convert_currency (exchange rates). Six tools now
+overlap in places (guide "see_and_do" vs find_attractions), so SYSTEM_PROMPT
+spells out which tool answers which kind of question.
+
 No memory, MCP or multiple agents here; each run starts a fresh conversation.
 """
 
@@ -52,7 +58,10 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from ai_travel_assistant.tools import (
+    convert_currency,
+    estimate_travel_time,
     find_attractions,
+    get_destination_guide,
     get_weather_forecast,
     search_destinations,
 )
@@ -63,6 +72,9 @@ TOOLS: tuple[BaseTool, ...] = (
     search_destinations,
     get_weather_forecast,
     find_attractions,
+    get_destination_guide,
+    estimate_travel_time,
+    convert_currency,
 )
 
 # Node names. "tools" is the name tools_condition returns, so the tool node must
@@ -94,9 +106,25 @@ SYSTEM_PROMPT = (
     "When the traveller asks about the weather, rain, temperature or what to "
     "pack, call get_weather_forecast with just the place name and base your "
     "answer only on the forecast it returns, using its units. "
+    # Background from the travel guide.
+    "When the traveller asks what a named place is like, how to get there or "
+    "around, or for practical or safety tips, call get_destination_guide with "
+    "the place name and the matching topic (overview, getting_there, "
+    "getting_around, see_and_do, safety; all when planning a whole visit). "
+    "Mention that the guide is from Wikivoyage and may be out of date. For a "
+    "list of nearby sights with distances, prefer find_attractions. "
+    # Distances between places.
+    "When the traveller asks how far apart two places are or how long the "
+    "journey takes, call estimate_travel_time with the two place names, and "
+    "say the time is a car estimate without traffic. "
+    # Money.
+    "When the traveller asks about exchange rates or what an amount is worth "
+    "in another currency, call convert_currency with ISO codes such as USD or "
+    "LKR, and quote its result; never use a remembered rate or do the "
+    "conversion yourself. "
     # Combining tools and handling failures.
-    "When planning a visit to a named place, you may call find_attractions and "
-    "get_weather_forecast in the same step. If a tool says its data is "
+    "When planning a visit to a named place, you may call several of these "
+    "tools in the same step. If a tool says its data is "
     "unavailable, do not call it again; tell the traveller plainly and never "
     "guess the weather or invent places. "
     "Keep answers short."
