@@ -360,9 +360,9 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 ### Stage 4: Real Tool Suite (3–4 days)
 - **Learn:** designing good tools (narrow purpose, clear arguments, compact outputs); the services/tools split; rate limiting and caching.
 - **Concepts:** tool selection quality depends on names, descriptions and output size, which matters for context cost.
-- **Tasks:** implement `find_attractions` (Overpass), `get_destination_guide` (Wikivoyage), `estimate_travel_time` (OSRM), `convert_currency`; optionally `web_search`. Add retries, timeouts, caching and the User-Agent header.
-- **Deliverable:** the agent can draft a rough 3-day Ella plan grounded in real data.
-- **Tests:** each service has success, empty-result and failure tests (mocked); a tool-selection test set of ~15 prompts → expected tools.
+- **Tasks:** implement `find_attractions` (Overpass), `get_destination_guide` (Wikivoyage), `estimate_travel_time` (OSRM), `convert_currency`; optionally `web_search`. Add retries, timeouts, caching and the User-Agent header. Fall back to a second Overpass server, then to the Wikivoyage guide's sights, when OpenStreetMap is unavailable.
+- **Deliverable:** the agent drafts grounded 3-day plans for Kandy, Galle, Nuwara Eliya, Sigiriya and Ella with one generic logic (no destination-specific code): attractions, OSRM travel times, weather, Wikivoyage background and converted prices, all from tool results, with the default origin (Colombo) stated and missing data listed as "Not available". Checked live with `itinerary_check.py`, one destination at a time (Kandy first).
+- **Tests:** each service has success, empty-result and failure tests (mocked); a tool-selection test set of ~15 prompts → expected tools; offline itinerary tests for all five destinations (prompt and code free of destination names, full trajectory per place, Overpass-outage fallback).
 
 ### Stage 5: Memory: Short-term and Long-term (3 days)
 - **Learn:** checkpointers, `thread_id`, state history, the Store API, `trim_messages`.
