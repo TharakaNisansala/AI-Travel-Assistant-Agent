@@ -247,4 +247,6 @@ def test_overpass_does_not_retry_a_timeout():
     location = weather_service.Location("Ella", 6.8756, 81.0463)
     with pytest.raises(attractions_service.AttractionsTimeoutError):
         attractions_service.fetch_attractions(location, client=client)
-    assert len(calls) == 1
+    # One attempt per server, no retry on the same server: the main server,
+    # then the fallback.
+    assert [str(c.url) for c in calls] == list(attractions_service.OVERPASS_URLS)
