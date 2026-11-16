@@ -463,9 +463,15 @@ def tool_text_when(monkeypatch, tool, fail_url: str, handler) -> str:
     produced too. Uses the services' real error handling and wording.
     """
 
+    # Failing "Overpass" means every Overpass server fails, the main one and
+    # the fallback, since the tool only reports a failure when all of them do.
+    failing = (
+        set(attractions_service.OVERPASS_URLS) if fail_url == OVERPASS else {fail_url}
+    )
+
     def route(request: httpx.Request) -> httpx.Response:
         url = str(request.url.copy_with(query=None))
-        if url == fail_url:
+        if url in failing:
             return handler(request)
         if url == GEO:
             return httpx.Response(200, json=KANDY_GEOCODING)
