@@ -59,6 +59,7 @@ from ai_travel_assistant import (
     weather_service,
 )
 from ai_travel_assistant.attractions_service import (
+    AttractionsLocationNotFoundError,
     AttractionsReport,
     AttractionsServiceError,
     Category,
@@ -446,8 +447,10 @@ def find_attractions(
     or when planning sightseeing for a trip. Searches within 5 km of the place
     and returns up to 8 named attractions, nearest first, each with its kind
     (e.g. waterfall, viewpoint, temple, museum) and straight-line distance in
-    km, or a message explaining why none could be found. It does NOT cover
-    hotels, restaurants, shops or hiking routes.
+    km, or a message explaining why none could be found. If OpenStreetMap
+    cannot be reached, it returns the sights named in the place's Wikivoyage
+    guide instead (without distances) and says so. It does NOT cover hotels,
+    restaurants, shops or hiking routes.
 
     Args:
         destination: Only the place name, e.g. "Ella" or "Kandy".
@@ -464,13 +467,53 @@ def find_attractions(
         report = attractions_service.get_attractions_report(
             destination, category, country_code
         )
-    except AttractionsServiceError as exc:
+    except AttractionsLocationNotFoundError as exc:
+        # The place itself is unknown: a guide lookup would not help.
         return (
             f"Attractions unavailable for '{destination}': {exc} "
             "Tell the traveller the attractions could not be retrieved; "
             "do not invent attractions."
         )
+    except AttractionsServiceError as exc:
+        # Every Overpass server failed: fall back to the Wikivoyage guide.
+        return attractions_from_guide(destination, exc)
     return format_attractions_report(report)
+
+
+def attractions_from_guide(destination: str, overpass_error: Exception) -> str:
+    """The final fallback when OpenStreetMap could not be reached.
+
+    Returns the "see and do" part of the place's Wikivoyage guide, clearly
+    labelled as a fallback: the sights are named but have no distances or
+    categories. The first line always starts "Attractions unavailable for",
+    so the agent and the tests can still tell that OpenStreetMap failed.
+    """
+    unavailable = f"Attractions unavailable for '{destination}': {overpass_error}"
+    try:
+        guide = guide_service.get_destination_guide(destination, "see_and_do")
+    except GuideServiceError as guide_error:
+        return (
+            f"{unavailable} The Wikivoyage fallback also failed: {guide_error} "
+            "Tell the traveller the attractions could not be retrieved; "
+            "do not invent attractions."
+        )
+    if not guide.sections:
+        return (
+            f"{unavailable} The Wikivoyage guide for {guide.title} names no "
+            "sights either. Tell the traveller the attractions could not be "
+            "retrieved; do not invent attractions."
+        )
+    return "\n".join(
+        [
+            unavailable,
+            "FALLBACK: sights named in the Wikivoyage guide instead "
+            "(no distances, not filtered by category).",
+            format_destination_guide(guide),
+            "Mention only sights named above, say they come from Wikivoyage "
+            "because OpenStreetMap could not be reached, and do not invent "
+            "attractions or distances.",
+        ]
+    )
 
 
 # --- Destination guide (Stage 4: Wikivoyage) ----------------------------------
