@@ -12,6 +12,11 @@ What this file demonstrates:
   4. Turning every failure into one typed exception family,
      AttractionsServiceError, with AttractionsBusyError marking the failures a
      later retry policy may safely retry (server overloaded or timed out).
+  5. Server fallback: the public Overpass servers are often at capacity, so if
+     the main server fails, the same query goes to a second public server
+     (OVERPASS_URLS). Only when every server fails is an error raised, and its
+     message names what went wrong on each one. The find_attractions tool then
+     falls back to the sights named in the Wikivoyage guide.
 
 This is the "services" layer from docs/PROJECT_PLAN.md (section 3.6): plain
 Python plus httpx. The @tool wrapper in tools.py calls it and formats the result.
@@ -42,6 +47,12 @@ from ai_travel_assistant.weather_service import (
 )
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# A second public Overpass server (listed on the OpenStreetMap wiki), asked only
+# when the main one fails. Same data, run by a different volunteer operator.
+OVERPASS_FALLBACK_URL = "https://overpass.private.coffee/api/interpreter"
+# Tried in this order. Worst case (every server times out) the search takes
+# about len(OVERPASS_URLS) * REQUEST_TIMEOUT seconds, so keep this list short.
+OVERPASS_URLS: tuple[str, ...] = (OVERPASS_URL, OVERPASS_FALLBACK_URL)
 
 DEFAULT_RADIUS_M = 5000
 DEFAULT_LIMIT = 8
@@ -182,13 +193,44 @@ def make_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
     )
 
 
+def _server_name(url: str) -> str:
+    """ "https://overpass-api.de/api/interpreter" -> "overpass-api.de"."""
+    return httpx.URL(url).host
+
+
 def _post_query(client: httpx.Client, query: str) -> dict:
-    """POST an Overpass query and return its JSON object, or raise."""
+    """POST an Overpass query to each server in turn; return the first success.
+
+    Every server gets its own attempt (with the usual retry of busy statuses).
+    If all of them fail, the error raised has the type of the LAST failure and
+    a message listing each server's problem, e.g. "No Overpass server could
+    complete the search. overpass-api.de: The Overpass API returned HTTP 502.
+    overpass.private.coffee: The Overpass API did not respond within 30 seconds."
+    """
+    failures: list[tuple[str, AttractionsServiceError]] = []
+    for url in OVERPASS_URLS:
+        try:
+            return _post_query_to(client, url, query)
+        except AttractionsServiceError as exc:
+            failures.append((url, exc))
+
+    if len(failures) == 1:  # only one server configured: keep its message
+        raise failures[0][1]
+    details = " ".join(f"{_server_name(url)}: {exc}" for url, exc in failures)
+    last_error = failures[-1][1]
+    raise type(last_error)(
+        f"No Overpass server could complete the search. {details}"
+    ) from last_error
+
+
+def _post_query_to(client: httpx.Client, url: str, query: str) -> dict:
+    """POST an Overpass query to one server and return its JSON object, or raise."""
     try:
         # Retries 429/502/503/504 once, but not timeouts: after 30 s of waiting,
-        # a second 30 s attempt would make the chat turn feel stuck.
+        # a second 30 s attempt on the same server would make the chat turn feel
+        # stuck. The next server in OVERPASS_URLS is tried instead.
         response = send_with_retry(
-            lambda: client.post(OVERPASS_URL, data={"data": query}),
+            lambda: client.post(url, data={"data": query}),
             retry_timeouts=False,
         )
     # TimeoutException is a kind of TransportError, so it must be caught first.
