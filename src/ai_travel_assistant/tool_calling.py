@@ -41,6 +41,12 @@ distance and driving time) and convert_currency (exchange rates). Six tools now
 overlap in places (guide "see_and_do" vs find_attractions), so SYSTEM_PROMPT
 spells out which tool answers which kind of question.
 
+For multi-day itineraries, SYSTEM_PROMPT adds a generic plan: gather guide,
+attractions, weather and travel time in one step; optionally a few travel
+times and currency conversions in a second; then write the plan day by day
+from tool results only, with sources, a stated default origin (DEFAULT_ORIGIN)
+and a "Not available" list. Usually 3-4 Gemini calls per itinerary.
+
 No memory, MCP or multiple agents here; each run starts a fresh conversation.
 """
 
@@ -81,6 +87,11 @@ TOOLS: tuple[BaseTool, ...] = (
 # be called exactly that (or we would need a mapping in add_conditional_edges).
 LLM = "llm"
 TOOLS_NODE = "tools"
+
+# Where a trip starts when the traveller does not say: the main entry point to
+# Sri Lanka (international airport and rail hub). The agent must say it assumed
+# this. It is the only place name in SYSTEM_PROMPT; destinations never appear.
+DEFAULT_ORIGIN = "Colombo"
 
 # Each tool's docstring says what that tool does; this prompt says how the
 # tools relate, so the LLM can choose between overlapping ones.
@@ -127,7 +138,28 @@ SYSTEM_PROMPT = (
     "tools in the same step. If a tool says its data is "
     "unavailable, do not call it again; tell the traveller plainly and never "
     "guess the weather or invent places. "
-    "Keep answers short."
+    # Multi-day itineraries. Generic on purpose: no place names, so the same
+    # rule works for every destination. Colombo is only the default ORIGIN.
+    "When the traveller asks for an itinerary or a plan of one or more days "
+    "at a named place, first gather real data in one step: "
+    "get_destination_guide (topic all), find_attractions (category all) and "
+    "get_weather_forecast for that place, and estimate_travel_time from the "
+    "traveller's starting point to it. If they did not say where they start, "
+    f"use {DEFAULT_ORIGIN} and state in the plan that you assumed it. "
+    "In the next step you may call estimate_travel_time for at most two "
+    "nearby places the guide suggests visiting from there, and "
+    "convert_currency for at most three prices the guide quotes, so the plan "
+    "shows each in both LKR and USD. "
+    "Then write the plan day by day, using only sights, travel times, "
+    "weather and prices from the tool results, and say where each comes "
+    "from (OpenStreetMap, Wikivoyage, OSRM, Open-Meteo or the exchange rate "
+    "service). If find_attractions returns a Wikivoyage fallback, use only "
+    "the sights it names. Give weather only for the days the forecast "
+    "covers and say no forecast is available for the others. End with a "
+    "short 'Not available' list of what the tools could not provide, such "
+    "as hotel or food prices, travel times between sights inside a town, or "
+    "any tool that failed. "
+    "Keep answers short; an itinerary may be longer but stays to the point."
 )
 
 
