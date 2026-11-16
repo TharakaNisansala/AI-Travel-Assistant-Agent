@@ -25,10 +25,12 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ValidationError
 
-from ai_travel_assistant import attractions_service
+from ai_travel_assistant import attractions_service, guide_service
 from ai_travel_assistant.attractions_service import (
     CATEGORIES,
+    OVERPASS_FALLBACK_URL,
     OVERPASS_URL,
+    OVERPASS_URLS,
     Attraction,
     AttractionsBusyError,
     AttractionsHTTPError,
@@ -44,6 +46,11 @@ from ai_travel_assistant.attractions_service import (
     get_attractions_report,
     make_client,
     parse_attractions,
+)
+from ai_travel_assistant.guide_service import (
+    DestinationGuide,
+    GuideNetworkError,
+    GuideSection,
 )
 from ai_travel_assistant.tool_calling import (
     SYSTEM_PROMPT,
@@ -363,6 +370,96 @@ def test_overpass_failures_become_typed_errors(handler, error):
         fetch_attractions(ELLA, client=client_for(handler))
 
 
+# --- 4b. Server fallback ------------------------------------------------------
+# The main public Overpass server is often at capacity, so a failure there must
+# send the same query to the fallback server before giving up.
+
+
+def per_server(main, fallback):
+    """A handler that answers the main and fallback servers differently."""
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return {OVERPASS_URL: main, OVERPASS_FALLBACK_URL: fallback}[str(request.url)](
+            request
+        )
+
+    return handler, requests
+
+
+def test_two_distinct_servers_are_configured_main_first():
+    assert OVERPASS_URLS == (OVERPASS_URL, OVERPASS_FALLBACK_URL)
+    assert OVERPASS_URL != OVERPASS_FALLBACK_URL
+    assert all(url.startswith("https://") for url in OVERPASS_URLS)
+
+
+def test_main_server_success_never_asks_the_fallback():
+    handler, requests = per_server(respond(200, json=ELLA_OVERPASS), respond(500))
+    report = fetch_attractions(ELLA, client=client_for(handler))
+    assert report.attractions
+    assert [str(r.url) for r in requests] == [OVERPASS_URL]
+
+
+@pytest.mark.parametrize(
+    "main_failure",
+    [
+        respond(502),
+        respond(504),
+        respond(400),
+        respond(200, text="not json"),
+        respond(200, json={"elements": [], "remark": "runtime error: timeout"}),
+        raising(httpx.ReadTimeout("slow")),
+        raising(httpx.ConnectError("refused")),
+    ],
+    ids=["502", "504", "400", "not-json", "remark", "timeout", "offline"],
+)
+def test_any_main_server_failure_falls_back_to_the_second_server(main_failure):
+    handler, requests = per_server(main_failure, respond(200, json=ELLA_OVERPASS))
+    report = fetch_attractions(ELLA, client=client_for(handler))
+
+    expected = parse_attractions(ELLA_OVERPASS, ELLA)
+    assert list(report.attractions) == expected[: len(report.attractions)]
+    assert str(requests[-1].url) == OVERPASS_FALLBACK_URL
+    # The fallback receives exactly the same query as the main server.
+    bodies = {r.content for r in requests}
+    assert len(bodies) == 1
+
+
+def test_when_every_server_fails_the_message_names_each_problem():
+    handler, requests = per_server(respond(502), raising(httpx.ReadTimeout("slow")))
+    with pytest.raises(AttractionsTimeoutError) as caught:
+        fetch_attractions(ELLA, client=client_for(handler))
+
+    message = str(caught.value)
+    assert message.startswith("No Overpass server could complete the search.")
+    assert "overpass-api.de: The Overpass API returned HTTP 502." in message
+    assert "overpass.private.coffee: The Overpass API did not respond" in message
+    # Main: first try + one retry of the 502; fallback: one timeout, no retry.
+    assert [str(r.url) for r in requests] == [
+        OVERPASS_URL,
+        OVERPASS_URL,
+        OVERPASS_FALLBACK_URL,
+    ]
+
+
+def test_the_error_type_is_that_of_the_last_server():
+    # The tool and the live-test policy read the type and message, so the
+    # final error must still be a precise AttractionsServiceError subclass.
+    handler, _ = per_server(raising(httpx.ReadTimeout("slow")), respond(504))
+    with pytest.raises(AttractionsBusyError):
+        fetch_attractions(ELLA, client=client_for(handler))
+
+
+def test_a_fallback_success_is_cached_like_any_other():
+    handler, requests = per_server(respond(502), respond(200, json=ELLA_OVERPASS))
+    client = client_for(handler)
+    first = fetch_attractions(ELLA, client=client)
+    count = len(requests)
+    assert fetch_attractions(ELLA, client=client) == first
+    assert len(requests) == count  # served from the cache
+
+
 def test_busy_errors_are_http_errors_and_service_errors():
     # One `except AttractionsServiceError` in the tool catches everything,
     # while a future retry policy can single out AttractionsBusyError.
@@ -618,6 +715,125 @@ def test_tool_reports_service_failures_instead_of_raising(
     assert text.startswith("Attractions unavailable for 'Ella':")
     assert expected in text
     assert "do not invent attractions" in text
+
+
+# --- 5b. Wikivoyage as the final fallback -----------------------------------
+# When every Overpass server fails, find_attractions returns the sights named
+# in the place's Wikivoyage guide instead, clearly labelled as a fallback.
+
+ELLA_SEE_AND_DO = DestinationGuide(
+    title="Ella",
+    url="https://en.wikivoyage.org/wiki/Ella",
+    topic="see_and_do",
+    sections=(
+        GuideSection("See", "1 Little Adam's Peak. An easy hike.", False),
+        GuideSection("Do", "Visit a tea garden. Rs 3,000 per person.", False),
+    ),
+    missing=(),
+)
+
+
+def guide_returns(monkeypatch, result) -> list[tuple[str, str]]:
+    """Replace the guide service; record each (destination, topic) asked for."""
+    calls: list[tuple[str, str]] = []
+
+    def fake_guide(destination, topic="all", **kwargs):
+        calls.append((destination, topic))
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(guide_service, "get_destination_guide", fake_guide)
+    return calls
+
+
+def test_overpass_outage_falls_back_to_the_wikivoyage_sights(monkeypatch):
+    overpass_fails_with(monkeypatch, respond(504))
+    calls = guide_returns(monkeypatch, ELLA_SEE_AND_DO)
+
+    text = find_attractions.invoke({"destination": "Ella", "category": "nature"})
+
+    assert calls == [("Ella", "see_and_do")]
+    lines = text.splitlines()
+    # The first line still reports the OpenStreetMap failure...
+    assert lines[0].startswith("Attractions unavailable for 'Ella':")
+    assert "busy (HTTP 504)" in lines[0]
+    # ...then the fallback, labelled, with the guide's own source line.
+    assert lines[1].startswith("FALLBACK: sights named in the Wikivoyage guide")
+    assert "[See] 1 Little Adam's Peak. An easy hike." in text
+    assert "Source: Wikivoyage" in text
+    assert text.rstrip().endswith("do not invent attractions or distances.")
+
+
+def test_fallback_has_no_distances_or_openstreetmap_source(monkeypatch):
+    overpass_fails_with(monkeypatch, respond(502))
+    guide_returns(monkeypatch, ELLA_SEE_AND_DO)
+    text = find_attractions.invoke({"destination": "Ella"})
+    assert ATTRACTIONS_SOURCE not in text
+    assert not re.search(r"\d km\b", text)
+
+
+def test_when_the_guide_also_fails_the_tool_says_so(monkeypatch):
+    overpass_fails_with(monkeypatch, respond(504))
+    guide_returns(monkeypatch, GuideNetworkError("Could not connect to Wikivoyage."))
+
+    text = find_attractions.invoke({"destination": "Ella"})
+
+    assert text.startswith("Attractions unavailable for 'Ella':")
+    assert "The Wikivoyage fallback also failed: Could not connect" in text
+    assert "do not invent attractions" in text
+    assert "FALLBACK" not in text
+
+
+def test_a_guide_without_sights_is_not_presented_as_a_fallback(monkeypatch):
+    overpass_fails_with(monkeypatch, respond(504))
+    empty = DestinationGuide("Ella", "https://x", "see_and_do", (), ("see_and_do",))
+    guide_returns(monkeypatch, empty)
+
+    text = find_attractions.invoke({"destination": "Ella"})
+
+    assert "names no sights either" in text
+    assert "FALLBACK" not in text
+
+
+def test_unknown_place_does_not_try_the_guide(monkeypatch):
+    api = FakeAPIs(geocoding={"generationtime_ms": 0.1})
+    monkeypatch.setattr(attractions_service, "make_client", api.client)
+    calls = guide_returns(monkeypatch, ELLA_SEE_AND_DO)
+    find_attractions.invoke({"destination": "Atlantis"})
+    assert calls == []
+
+
+def test_openstreetmap_success_does_not_ask_the_guide(monkeypatch, fake_apis):
+    calls = guide_returns(monkeypatch, ELLA_SEE_AND_DO)
+    text = find_attractions.invoke({"destination": "Ella"})
+    assert calls == []
+    assert ATTRACTIONS_SOURCE in text
+
+
+@pytest.mark.parametrize("place", ["Kandy", "Galle", "Nuwara Eliya", "Sigiriya"])
+def test_fallback_asks_the_guide_for_the_place_requested(monkeypatch, place):
+    # Generic, not Ella-specific: the guide is asked for whatever place failed.
+    overpass_fails_with(monkeypatch, respond(504))
+    calls = guide_returns(
+        monkeypatch,
+        DestinationGuide(
+            place,
+            "https://x",
+            "see_and_do",
+            (GuideSection("See", "A sight.", False),),
+            (),
+        ),
+    )
+    text = find_attractions.invoke({"destination": place})
+    assert calls == [(place, "see_and_do")]
+    assert f"Wikivoyage guide for {place} (see and do):" in text
+
+
+def test_the_offline_network_guard_blocks_real_requests():
+    # conftest.no_real_network: offline tests can never reach the internet.
+    with pytest.raises(httpx.ConnectError, match="offline test"):
+        httpx.get("https://example.com")
 
 
 def test_tool_explains_an_unknown_destination(monkeypatch):
