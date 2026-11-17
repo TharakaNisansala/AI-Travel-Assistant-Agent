@@ -66,6 +66,15 @@ after the answer, but only spends a Gemini call when a message looks like a
 preference ("I'm vegetarian"). /prefs and /forget show or clear them; --user
 picks the traveller:
     uv run python -m ai_travel_assistant.tool_calling --chat --user tharaka
+
+Stage 6 adds request understanding (request_understanding.py). In --chat every
+message is first read by one extra Gemini call: what it is for (plan, modify,
+question, off_topic) and which trip details it gives. A plan without a
+destination or number of days makes the agent ask, and the chat pauses with
+interrupt() until the traveller answers; off-topic requests get a fixed reply
+without calling the agent. --no-clarify turns this off to save quota (the
+graph is then the Stage 5 one):
+    uv run python -m ai_travel_assistant.tool_calling --chat --no-clarify
 """
 
 from __future__ import annotations
@@ -114,6 +123,7 @@ from ai_travel_assistant.request_understanding import (
     WAIT_FOR_REPLY,
     RequestUnderstander,
     ask_clarification_node,
+    make_llm_request_understander,
     make_understand_request_node,
     respond_off_topic_node,
     route_after_understanding,
@@ -581,6 +591,11 @@ def run_agent_chat(
     If the graph has a Store, /prefs lists the traveller's saved preferences
     and /forget deletes them (neither calls the LLM).
 
+    If the graph asks clarification questions (Stage 6), the next message
+    answers the question (ask_agent resumes the paused run). A reopened thread
+    that is waiting for an answer shows its question again. /new while a
+    question waits leaves that thread paused; --thread can answer it later.
+
     read and write default to input() and print(); tests pass fakes. Ctrl+C
     or end of input (EOFError) is left to the caller.
     """
@@ -591,6 +606,9 @@ def run_agent_chat(
         count = saved_message_count(graph, thread_id)
         if count:
             write(f"Continuing conversation {thread_id} ({count} saved messages).")
+            question = pending_question(graph, thread_id)
+            if question:
+                write(f"AI (waiting for your answer): {question}")
         else:
             write(f"No saved messages for {thread_id}; starting it now.")
     write(
@@ -653,6 +671,14 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_USER,
         help=f"with --chat: whose preferences to use (default: {DEFAULT_USER})",
     )
+    parser.add_argument(
+        "--no-clarify",
+        action="store_true",
+        help=(
+            "with --chat: skip request understanding and clarification "
+            "questions (saves one Gemini call per message)"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.question is None and not args.chat:
         parser.error("give a question, or use --chat")
@@ -662,6 +688,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--thread is used together with --chat")
     if args.user != DEFAULT_USER and not args.chat:
         parser.error("--user is used together with --chat")
+    if args.no_clarify and not args.chat:
+        parser.error("--no-clarify is used together with --chat")
 
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
@@ -682,7 +710,13 @@ def main(argv: list[str] | None = None) -> int:
         # Conversations (checkpointer) and preferences (Store) live in the same
         # SQLite file, so both survive a restart. The extractor gets its own
         # model at temperature 0 and only runs when the gate matches.
-        extractor = make_llm_preference_extractor(build_llm(settings, temperature=0))
+        precise_llm = build_llm(settings, temperature=0)
+        extractor = make_llm_preference_extractor(precise_llm)
+        # Stage 6: one extra call per message reads its intent and trip
+        # details, at temperature 0 like the other extraction calls.
+        understander = (
+            None if args.no_clarify else make_llm_request_understander(precise_llm)
+        )
         with (
             sqlite_checkpointer(args.db) as checkpointer,
             sqlite_store(args.db) as store,
@@ -692,6 +726,7 @@ def main(argv: list[str] | None = None) -> int:
                 checkpointer=checkpointer,
                 store=store,
                 preference_extractor=extractor,
+                understander=understander,
             )
             try:
                 run_agent_chat(
