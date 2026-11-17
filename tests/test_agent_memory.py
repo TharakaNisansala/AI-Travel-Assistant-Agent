@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 from ai_travel_assistant import tool_calling
@@ -242,3 +242,61 @@ def test_chat_with_an_unknown_thread_starts_it(tmp_path):
 def test_cli_thread_needs_chat():
     with pytest.raises(SystemExit):
         tool_calling.main(["Where to hike?", "--thread", "abc"])
+
+
+# --- Trimming: what a follow-up turn sends to the LLM -------------------------
+
+
+def weather_call() -> AIMessage:
+    return AIMessage(
+        "",
+        tool_calls=[
+            {
+                "name": "get_weather_forecast",
+                "args": {"destination": "Ella"},
+                "id": "w1",
+            }
+        ],
+    )
+
+
+def test_follow_up_does_not_resend_old_tool_results(monkeypatch):
+    monkeypatch.setattr(
+        tool_calling.get_weather_forecast,
+        "func",
+        lambda **_: "Bulky forecast text " * 50,
+    )
+    model = RecordingModel(
+        messages=iter([weather_call(), AIMessage("Sunny."), AIMessage("Yes.")]),
+        calls=[],
+    )
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+
+    ask_agent(graph, "t1", "Weather in Ella?")
+    ask_agent(graph, "t1", "Good for hiking?")
+
+    assert texts(model.calls[2]) == [
+        "Weather in Ella?",
+        "Sunny.",
+        "Good for hiking?",
+    ]
+    saved = graph.get_state({"configurable": {"thread_id": "t1"}}).values["messages"]
+    assert any(isinstance(m, ToolMessage) for m in saved)
+
+
+def test_trimming_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(
+        tool_calling.get_weather_forecast, "func", lambda **_: "Forecast."
+    )
+    model = RecordingModel(
+        messages=iter([weather_call(), AIMessage("Sunny."), AIMessage("Yes.")]),
+        calls=[],
+    )
+    graph = build_tool_agent_graph(
+        model, checkpointer=InMemorySaver(), max_history_tokens=None
+    )
+
+    ask_agent(graph, "t1", "Weather in Ella?")
+    ask_agent(graph, "t1", "Good for hiking?")
+
+    assert any(isinstance(m, ToolMessage) for m in model.calls[2])
