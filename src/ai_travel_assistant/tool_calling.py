@@ -57,21 +57,27 @@ run_agent_chat() is the terminal loop around ask_agent, with /new for a fresh
 thread (each message makes the usual 2-4 Gemini calls):
     uv run python -m ai_travel_assistant.tool_calling --chat
     uv run python -m ai_travel_assistant.tool_calling --chat --steps
+The chat saves its checkpoints in a SQLite file (DEFAULT_CHAT_DB), so a
+conversation survives a restart; reopen it with the id printed at the start:
+    uv run python -m ai_travel_assistant.tool_calling --chat --thread <id>
 """
 
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -284,9 +290,35 @@ NEW_COMMAND = "/new"
 QUIT_COMMANDS = frozenset({"/quit", "/exit"})
 
 
+# Where --chat keeps its conversations. Git-ignored: it holds real chat text.
+DEFAULT_CHAT_DB = Path(".data/chat.sqlite")
+
+
 def new_thread_id() -> str:
     """A random, unique id for a new conversation."""
     return uuid.uuid4().hex
+
+
+@contextmanager
+def sqlite_checkpointer(path: Path) -> Iterator[SqliteSaver]:
+    """Open a SQLite checkpointer on a file, and close the file afterwards.
+
+    Same checkpoints as InMemorySaver, but written to disk: a new process that
+    opens the same file and uses the same thread_id gets the old messages.
+    check_same_thread=False because LangGraph may run nodes on worker threads.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, check_same_thread=False)
+    try:
+        yield SqliteSaver(conn)
+    finally:
+        conn.close()
+
+
+def saved_message_count(graph: CompiledStateGraph, thread_id: str) -> int:
+    """How many messages the checkpointer holds for this thread (0 if new)."""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    return len(graph.get_state(config).values.get("messages", []))
 
 
 def run_agent_chat(
@@ -294,31 +326,41 @@ def run_agent_chat(
     read: Callable[[str], str] = input,
     write: Callable[[str], None] = print,
     *,
+    thread_id: str | None = None,
     show_steps: bool = False,
     describe_error: Callable[[Exception], str] = lambda exc: type(exc).__name__,
 ) -> None:
     """Chat with the agent in the terminal, one thread at a time.
 
     The graph must be built with a checkpointer. Every message goes to the
-    current thread, so follow-ups see the earlier turns. /new starts a fresh
-    thread (the old one stays saved), /quit or /exit ends the chat. A failed
-    turn (e.g. a Gemini 503) is reported and the chat goes on.
+    current thread, so follow-ups see the earlier turns. Pass thread_id to
+    continue a saved conversation; otherwise a new one starts. /new starts a
+    fresh thread (the old one stays saved), /quit or /exit ends the chat. A
+    failed turn (e.g. a Gemini 503) is reported and the chat goes on.
 
     read and write default to input() and print(); tests pass fakes. Ctrl+C
     or end of input (EOFError) is left to the caller.
     """
-    thread_id = new_thread_id()
+    if thread_id is None:
+        thread_id = new_thread_id()
+        write(f"New conversation: {thread_id}")
+    else:
+        count = saved_message_count(graph, thread_id)
+        if count:
+            write(f"Continuing conversation {thread_id} ({count} saved messages).")
+        else:
+            write(f"No saved messages for {thread_id}; starting it now.")
     write(f"Type {NEW_COMMAND} for a new conversation, /quit to stop.")
     while True:
         text = read("You: ").strip()
         if not text:
             continue
         if text.lower() in QUIT_COMMANDS:
-            write("Bye!")
+            write(f"Bye! Reopen this conversation with --thread {thread_id}")
             return
         if text.lower() == NEW_COMMAND:
             thread_id = new_thread_id()
-            write("Started a new conversation.")
+            write(f"New conversation: {thread_id}")
             continue
         try:
             turn = ask_agent(graph, thread_id, text)
@@ -348,11 +390,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="multi-turn chat with memory (each message makes Gemini calls)",
     )
+    parser.add_argument(
+        "--thread", metavar="ID", help="with --chat: continue a saved conversation"
+    )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=DEFAULT_CHAT_DB,
+        help=f"with --chat: SQLite file for conversations (default: {DEFAULT_CHAT_DB})",
+    )
     args = parser.parse_args(argv)
     if args.question is None and not args.chat:
         parser.error("give a question, or use --chat")
     if args.question is not None and args.chat:
         parser.error("--chat reads its questions from the terminal")
+    if args.thread is not None and not args.chat:
+        parser.error("--thread is used together with --chat")
 
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
@@ -370,16 +423,20 @@ def main(argv: list[str] | None = None) -> int:
 
     llm = build_llm(settings, temperature=1.0)
     if args.chat:
-        # In-memory for now: the conversation ends when the program exits.
-        graph = build_tool_agent_graph(llm, checkpointer=InMemorySaver())
-        try:
-            run_agent_chat(
-                graph,
-                show_steps=args.steps,
-                describe_error=lambda exc: safe_error_message(exc, settings.api_key),
-            )
-        except (KeyboardInterrupt, EOFError):  # Ctrl+C / Ctrl+Z ends the chat
-            print("\nBye!")
+        # Saved to a SQLite file, so the conversation survives a restart.
+        with sqlite_checkpointer(args.db) as checkpointer:
+            graph = build_tool_agent_graph(llm, checkpointer=checkpointer)
+            try:
+                run_agent_chat(
+                    graph,
+                    thread_id=args.thread,
+                    show_steps=args.steps,
+                    describe_error=lambda exc: safe_error_message(
+                        exc, settings.api_key
+                    ),
+                )
+            except (KeyboardInterrupt, EOFError):  # Ctrl+C / Ctrl+Z ends the chat
+                print("\nBye!")
         return 0
 
     graph = build_tool_agent_graph(llm)
