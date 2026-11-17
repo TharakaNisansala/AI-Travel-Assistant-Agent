@@ -75,6 +75,16 @@ interrupt() until the traveller answers; off-topic requests get a fixed reply
 without calling the agent. --no-clarify turns this off to save quota (the
 graph is then the Stage 5 one):
     uv run python -m ai_travel_assistant.tool_calling --chat --no-clarify
+
+Stage 7 makes the loop robust (robustness.py, faults.py). A tool that raises
+becomes an error result for that call only; the LLM sees a repaired history
+(tool calls left without results by a crash are closed); route_after_agent
+replaces tools_condition and stops a turn after MAX_TOOL_ROUNDS tool rounds,
+ending it with one wrap-up call. In --chat, transient Gemini errors are
+retried once by the llm node's RetryPolicy (the client itself does not retry,
+and 429s are never retried), and failures are shown as short, safe messages.
+Try an outage without breaking anything real (PowerShell):
+    $env:FAULT_INJECT = "weather"; uv run python -m ai_travel_assistant.tool_calling --chat
 """
 
 from __future__ import annotations
