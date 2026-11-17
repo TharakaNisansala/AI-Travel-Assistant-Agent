@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
+from ai_travel_assistant import tool_calling
 from ai_travel_assistant.long_term_memory import load_preferences
 from ai_travel_assistant.request_understanding import (
     CLARIFICATION_NAME,
@@ -27,6 +28,7 @@ from ai_travel_assistant.tool_calling import (
     describe_steps,
     final_answer,
     pending_question,
+    run_agent_chat,
     sqlite_checkpointer,
 )
 
@@ -382,3 +384,56 @@ def test_off_topic_still_passes_the_preference_gate():
 def test_no_pending_question_on_an_unknown_thread():
     graph = build(agent())
     assert pending_question(graph, "nope") is None
+
+
+# --- The terminal chat ----------------------------------------------------------
+
+
+def fake_terminal(*lines: str):
+    """read() returns the given lines in order; write() records the output."""
+    replies = iter(lines)
+    shown: list[str] = []
+    return (lambda prompt: next(replies)), shown.append, shown
+
+
+def test_chat_asks_then_answers():
+    graph = build(agent("Day 1 in Galle ..."))
+    read, write, shown = fake_terminal("Plan me a trip", "Galle, 2 days", "/quit")
+
+    run_agent_chat(graph, read, write)
+
+    assert f"AI: {ASK_BOTH}" in shown
+    assert "AI: Day 1 in Galle ..." in shown
+    assert shown.index(f"AI: {ASK_BOTH}") < shown.index("AI: Day 1 in Galle ...")
+
+
+def test_chat_reopened_on_a_paused_thread_shows_the_question(tmp_path):
+    db = tmp_path / "chat.sqlite"
+    with sqlite_checkpointer(db) as saver:
+        ask_agent(build(agent(), checkpointer=saver), "trip-1", "Plan me a trip")
+
+    read, write, shown = fake_terminal("Galle, 2 days", "/quit")
+    with sqlite_checkpointer(db) as saver:
+        graph = build(agent("Day 1 in Galle ..."), checkpointer=saver)
+        run_agent_chat(graph, read, write, thread_id="trip-1")
+
+    assert shown[0] == "Continuing conversation trip-1 (2 saved messages)."
+    assert shown[1] == f"AI (waiting for your answer): {ASK_BOTH}"
+    assert "AI: Day 1 in Galle ..." in shown
+
+
+def test_new_while_paused_starts_fresh_and_keeps_the_old_question():
+    graph = build(agent("Day 1 in Ella ..."))
+    read, write, shown = fake_terminal(
+        "Plan me a trip", "/new", "Plan 3 days in Ella", "/quit"
+    )
+
+    run_agent_chat(graph, read, write, thread_id="old")
+
+    assert "AI: Day 1 in Ella ..." in shown
+    assert pending_question(graph, "old") == ASK_BOTH
+
+
+def test_cli_no_clarify_needs_chat():
+    with pytest.raises(SystemExit):
+        tool_calling.main(["Where to hike?", "--no-clarify"])
