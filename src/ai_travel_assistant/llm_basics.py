@@ -64,11 +64,16 @@ def load_settings() -> GeminiSettings:
 # --- 1. Initializing an LLM ---------------------------------------------------
 
 
-def build_llm(settings: GeminiSettings, temperature: float = 1.0) -> BaseChatModel:
+def build_llm(
+    settings: GeminiSettings, temperature: float = 1.0, max_retries: int = 3
+) -> BaseChatModel:
     """Create a LangChain chat model that talks to Gemini.
 
     Creating the object does NOT call the API. It only stores the configuration.
     The network request happens later, when we call .invoke().
+
+    max_retries=0 turns the client's own retries off, for callers that retry
+    in one place themselves (Stage 7: the agent graph's RetryPolicy).
     """
     return ChatGoogleGenerativeAI(
         model=settings.model,  # which Gemini model to use, e.g. gemini-3.5-flash
@@ -79,7 +84,7 @@ def build_llm(settings: GeminiSettings, temperature: float = 1.0) -> BaseChatMod
         # Google recommends keeping Gemini 3.x models at the default of 1.0. Lower
         # values work, but they can sometimes cause repetitive output.
         temperature=temperature,
-        max_retries=3,  # retry transient failures (rate limits, 5xx) a few times
+        max_retries=max_retries,  # retry transient failures (rate limits, 5xx)
         timeout=120,  # seconds before we give up on one request
     )
 

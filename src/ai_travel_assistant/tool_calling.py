@@ -138,6 +138,8 @@ from ai_travel_assistant.robustness import (
     TO_TOOLS,
     WRAP_UP_INSTRUCTION,
     close_pending_calls,
+    describe_llm_error,
+    llm_retry_policy,
     make_route_after_agent,
     repair_history,
     tool_error_message,
@@ -778,7 +780,6 @@ def main(argv: list[str] | None = None) -> int:
         ConfigError,
         build_llm,
         load_settings,
-        safe_error_message,
     )
 
     try:
@@ -787,12 +788,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
 
-    llm = build_llm(settings, temperature=1.0)
     if args.chat:
+        # Stage 7: one retry layer. The client does not retry (max_retries=0);
+        # the graph's llm node retries a transient error once (llm_retry), and
+        # never a 429. The understander and extractor are not retried: they
+        # fall back (to the agent, or to not saving) instead.
+        llm = build_llm(settings, temperature=1.0, max_retries=0)
         # Conversations (checkpointer) and preferences (Store) live in the same
         # SQLite file, so both survive a restart. The extractor gets its own
         # model at temperature 0 and only runs when the gate matches.
-        precise_llm = build_llm(settings, temperature=0)
+        precise_llm = build_llm(settings, temperature=0, max_retries=0)
         extractor = make_llm_preference_extractor(precise_llm)
         # Stage 6: one extra call per message reads its intent and trip
         # details, at temperature 0 like the other extraction calls.
@@ -809,6 +814,7 @@ def main(argv: list[str] | None = None) -> int:
                 store=store,
                 preference_extractor=extractor,
                 understander=understander,
+                llm_retry=llm_retry_policy(),
             )
             try:
                 run_agent_chat(
@@ -816,22 +822,19 @@ def main(argv: list[str] | None = None) -> int:
                     thread_id=args.thread,
                     user_id=args.user,
                     show_steps=args.steps,
-                    describe_error=lambda exc: safe_error_message(
-                        exc, settings.api_key
-                    ),
+                    # A short, safe message: never the raw error text.
+                    describe_error=describe_llm_error,
                 )
             except (KeyboardInterrupt, EOFError):  # Ctrl+C / Ctrl+Z ends the chat
                 print("\nBye!")
         return 0
 
-    graph = build_tool_agent_graph(llm)
+    # One-shot mode keeps its Stage 3/4 setup: the client's own retries.
+    graph = build_tool_agent_graph(build_llm(settings, temperature=1.0))
     try:
         messages = run_tool_agent(graph, args.question)
     except Exception as exc:  # show a clean message instead of a traceback
-        print(
-            f"Request failed: {safe_error_message(exc, settings.api_key)}",
-            file=sys.stderr,
-        )
+        print(f"Request failed: {describe_llm_error(exc)}", file=sys.stderr)
         return 1
 
     if args.steps:
