@@ -100,7 +100,7 @@ class Scripted(GenericFakeChatModel):
     fail_on: dict = {}
 
     def bind_tools(self, tools, **kwargs):
-        self.bound = [t.name for t in tools]
+        self.bound = [getattr(t, "name", getattr(t, "__name__", "")) for t in tools]
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
@@ -532,3 +532,94 @@ def test_the_requested_day_count_is_checked(tools):
         "You asked for 2 days; this plan has 1."
         in state(graph)["itinerary"]["warnings"]
     )
+
+
+# --- CLI: steps, /itinerary and --json ------------------------------------------------
+
+
+def test_steps_show_the_submission_and_the_rendering(tools):
+    from ai_travel_assistant.tool_calling import describe_steps
+
+    turn = ask_agent(
+        build(scripted(gather(), submit(plan()))), "t1", "Plan 2 days in Ella"
+    )
+    lines = describe_steps(turn)
+    assert "[llm -> submit_itinerary] 2 days in Ella" in lines
+    assert lines[-1] == "[compose -> itinerary checked and shown]"
+
+
+def test_chat_itinerary_command_prints_the_saved_json(tools):
+    import json
+
+    from ai_travel_assistant.tool_calling import NO_ITINERARY, run_agent_chat
+
+    graph = build(scripted(gather(), submit(plan())))
+    replies = iter(["/itinerary", "Plan 2 days in Ella", "/itinerary", "/quit"])
+    shown: list[str] = []
+
+    run_agent_chat(graph, lambda prompt: next(replies), shown.append, thread_id="t1")
+
+    assert NO_ITINERARY in shown
+    saved = json.loads(shown[-2])
+    assert saved == state(graph)["itinerary"]
+    assert saved["destination"] == "Ella"
+
+
+@pytest.fixture
+def fake_settings(monkeypatch):
+    from ai_travel_assistant import llm_basics
+
+    settings = llm_basics.GeminiSettings(model="fake-model", api_key="fake")
+    monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
+    return llm_basics
+
+
+def test_one_shot_json_prints_the_itinerary(tools, fake_settings, monkeypatch, capsys):
+    import json
+
+    model = scripted(gather(), submit(plan()))
+    monkeypatch.setattr(fake_settings, "build_llm", lambda s, **kw: model)
+
+    assert tool_calling.main(["--json", "Plan 2 days in Ella"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert (printed["destination"], printed["days"]) == ("Ella", 2)
+    assert "submit_itinerary" in model.bound
+
+
+def test_one_shot_json_without_an_itinerary_says_so(fake_settings, monkeypatch, capsys):
+    from ai_travel_assistant.tool_calling import NO_ITINERARY
+
+    monkeypatch.setattr(
+        fake_settings, "build_llm", lambda s, **kw: scripted("Just text.")
+    )
+    assert tool_calling.main(["--json", "What is Ella like?"]) == 0
+    out = capsys.readouterr()
+    assert NO_ITINERARY in out.err
+    assert out.out.strip() == "Just text."
+
+
+def test_one_shot_without_json_prints_the_rendered_plan(
+    tools, fake_settings, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        fake_settings, "build_llm", lambda s, **kw: scripted(gather(), submit(plan()))
+    )
+    assert tool_calling.main(["Plan 2 days in Ella"]) == 0
+    assert capsys.readouterr().out.startswith("# 2-day trip to Ella")
+
+
+def test_json_and_chat_do_not_mix():
+    with pytest.raises(SystemExit):
+        tool_calling.main(["--chat", "--json"])
+
+
+def test_chat_turns_structured_itineraries_on(fake_settings, monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(fake_settings, "build_llm", lambda s, **kw: scripted("Hi."))
+    monkeypatch.setattr(
+        tool_calling,
+        "run_agent_chat",
+        lambda graph, **kw: seen.setdefault("graph", graph),
+    )
+    assert tool_calling.main(["--chat", "--db", str(tmp_path / "chat.sqlite")]) == 0
+    assert COMPOSE_ANSWER in seen["graph"].get_graph().nodes
