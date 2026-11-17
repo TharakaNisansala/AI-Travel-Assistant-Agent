@@ -86,6 +86,15 @@ and 429s are never retried), and failures are shown as short, safe messages.
 Try an outage without breaking anything real (PowerShell):
     $env:FAULT_INJECT = "weather"
     uv run python -m ai_travel_assistant.tool_calling --chat
+
+Stage 8 adds structured itineraries (itinerary_output.py,
+itinerary_grounding.py). In --chat and one-shot mode the agent finishes an
+itinerary by calling submit_itinerary; compose_answer validates it, checks
+every factual value against the tool results for that destination, and
+renders Markdown, all without an extra Gemini call. An invalid submission
+is sent back once, then salvaged. /itinerary (chat) or --json (one-shot)
+prints the checked plan as JSON:
+    uv run python -m ai_travel_assistant.tool_calling --json "Plan 2 days in Ella"
 """
 
 from __future__ import annotations
