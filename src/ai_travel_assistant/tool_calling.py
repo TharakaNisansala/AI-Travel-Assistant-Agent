@@ -84,7 +84,8 @@ ending it with one wrap-up call. In --chat, transient Gemini errors are
 retried once by the llm node's RetryPolicy (the client itself does not retry,
 and 429s are never retried), and failures are shown as short, safe messages.
 Try an outage without breaking anything real (PowerShell):
-    $env:FAULT_INJECT = "weather"; uv run python -m ai_travel_assistant.tool_calling --chat
+    $env:FAULT_INJECT = "weather"
+    uv run python -m ai_travel_assistant.tool_calling --chat
 """
 
 from __future__ import annotations
