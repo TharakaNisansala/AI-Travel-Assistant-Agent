@@ -381,9 +381,29 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 ### Stage 7: Error Handling and Robustness (2–3 days)
 - **Learn:** `RetryPolicy`, `handle_tool_errors`, `recursion_limit`, fallback nodes.
 - **Concepts:** graceful degradation; never trusting LLM output blindly; typed errors.
-- **Tasks:** implement everything in §3.9; add a fault-injection switch (`FAULT_INJECT=weather`) to simulate outages; structured logging.
+- **Tasks:** implement everything in §3.9; add a fault-injection switch (`FAULT_INJECT=weather`) to simulate outages; structured logging. As built (`robustness.py`, `faults.py`):
+  - **One retry layer for Gemini.** `--chat` builds its models with `max_retries=0`, and only the `llm` node gets a LangGraph `RetryPolicy` (`llm_retry_policy()`: 2 attempts, transient errors only, meaning 5xx, timeouts and dropped connections; never 429 or other 4xx). It is opt-in (`build_tool_agent_graph(..., llm_retry=...)`), so callers without it keep their Stage 5 behaviour; one-shot mode keeps the client's own 3 retries. Tools are not node-retried (their services retry at the HTTP level); the understander and preference extractor fall back instead of retrying.
+  - **Tool errors.** `ToolNode(handle_tool_errors=tool_error_message)`: an unexpected exception becomes an error result for that call only, so the other parallel results are kept and the turn goes on.
+  - **Repaired history.** `repair_history()` runs on what the LLM sees, after trimming. A tool call without a result gets a "not run" result, a result without its call is dropped, and two traveller messages in a row get a "no answer" note. It is pure: the saved thread is never changed.
+  - **Loop cap.** `route_after_agent` replaces `tools_condition`. On the request after `MAX_TOOL_ROUNDS = 4` tool rounds in one turn, `fallback_response` closes the stopped calls, makes one wrap-up call, and falls back to a fixed reply if that fails or asks for tools again. At most 6 agent calls per turn.
+  - **Daily quota.** A daily-quota 429 in the Stage 6 understander ends the turn at once; other understander errors still fall back to the agent.
+  - **Safe messages.** `describe_llm_error()` gives busy, rate-limit, daily-quota, rejected or generic messages, and never the raw error text.
+  - **Fault injection.** `FAULT_INJECT=weather,guide:busy` (modes `down`, `busy`, `timeout`) swaps in a failing transport in that service's `make_client`. It is off unless set, a typo is a configuration error, and the CLI prints a warning while it is on.
+  - **Not done here.** Structured logging and a structured-output *repair* retry: the understander and extractor already fail safe, so a repair call would only spend quota. Repair belongs with `compose_answer` in Stage 8.
 - **Deliverable:** with the weather API "down", the itinerary is still produced and carries a "weather unavailable" note.
-- **Tests:** fault-injection tests for each tool; Gemini 429 simulation; loop-cap test; malformed structured-output repair test.
+- **Tests:** fault-injection tests for each tool; Gemini 429 simulation; loop-cap test; malformed structured-output repair test. As built, all offline (`test_robustness.py`, `test_robustness_graph.py`, `test_faults.py`):
+  - error classification against real `google.genai` error objects
+  - one retry for a 503, two attempts at most, a single attempt for 429/400/401, no tool re-run on a retry
+  - a failing tool keeping the other parallel results
+  - recovery after a Gemini failure and from an orphaned tool call, with the saved thread unchanged
+  - the cap, wrap-up failure and a wrap-up that asks for tools
+  - preferences still saved after the fallback
+  - understander quota fail-fast, an agent failure after a Stage 6 resume, and paused-thread isolation
+  - the chat's single retry layer and safe messages (no key, no traceback)
+  - every service × every fault mode, and the weather-down itinerary
+  - the full suite also passes with `FAULT_INJECT` set in the shell
+
+  **Status: offline complete; live verification deferred** (Gemini quota and availability). Still to check live: a `FAULT_INJECT=weather` itinerary, and that Gemini accepts a repaired history.
 
 ### Stage 8: Structured Itinerary Output (2 days)
 - **Learn:** complex nested schemas; separating content generation from rendering.
