@@ -47,7 +47,12 @@ times and currency conversions in a second; then write the plan day by day
 from tool results only, with sources, a stated default origin (DEFAULT_ORIGIN)
 and a "Not available" list. Usually 3-4 Gemini calls per itinerary.
 
-No memory, MCP or multiple agents here; each run starts a fresh conversation.
+Stage 5 adds short-term memory. build_tool_agent_graph(model, checkpointer=...)
+compiles the same loop with a checkpointer, which saves the message history
+after every step under a thread_id. ask_agent() sends one message on a thread:
+LangGraph loads that thread's saved history first and the add_messages reducer
+appends the new message, so a follow-up ("make day 2 easier") sees the earlier
+plan. Without a checkpointer every run starts a fresh conversation, as before.
 """
 
 from __future__ import annotations
@@ -58,7 +63,9 @@ from collections.abc import Callable, Sequence
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -187,12 +194,17 @@ def make_llm_node(
 
 
 def build_tool_agent_graph(
-    model: BaseChatModel, tools: Sequence[BaseTool] = TOOLS
+    model: BaseChatModel,
+    tools: Sequence[BaseTool] = TOOLS,
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
     bind_tools() does not call the API. It returns a wrapped model that sends
     the tools' names, descriptions and argument schemas with every request.
+
+    With a checkpointer, every invoke must name a thread_id (see ask_agent),
+    and each thread keeps its own message history between invokes.
     """
     llm_with_tools = model.bind_tools(list(tools))
 
@@ -210,13 +222,26 @@ def build_tool_agent_graph(
     )
     # The loop: after a tool runs, the LLM reads its result and decides again.
     builder.add_edge(TOOLS_NODE, LLM)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 def run_tool_agent(graph: CompiledStateGraph, question: str) -> list[AnyMessage]:
     """Ask one question and return the full message history of the run."""
     state = graph.invoke({"messages": [HumanMessage(question)]})
     return state["messages"]
+
+
+def ask_agent(graph: CompiledStateGraph, thread_id: str, text: str) -> list[AnyMessage]:
+    """Send one message on a thread and return only this turn's messages.
+
+    The graph must be built with a checkpointer. The saved history of the
+    thread is loaded first, so the LLM sees the earlier turns; the returned
+    list starts at the new HumanMessage (tool calls, results, final answer).
+    """
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    before = len(graph.get_state(config).values.get("messages", []))
+    state = graph.invoke({"messages": [HumanMessage(text)]}, config)
+    return state["messages"][before:]
 
 
 def final_answer(messages: Sequence[AnyMessage]) -> str:
