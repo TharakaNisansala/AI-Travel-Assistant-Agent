@@ -34,6 +34,12 @@ def test_build_llm_sets_temperature_without_calling_api():
     assert llm.model.endswith("some-flash-model")
 
 
+def test_build_llm_keeps_three_client_retries_unless_told_otherwise():
+    settings = llm_basics.GeminiSettings(model="some-flash-model", api_key="fake")
+    assert llm_basics.build_llm(settings).max_retries == 3
+    assert llm_basics.build_llm(settings, max_retries=0).max_retries == 0
+
+
 def test_content_to_text_handles_str_and_blocks():
     assert llm_basics.content_to_text("Hello") == "Hello"
     blocks = [

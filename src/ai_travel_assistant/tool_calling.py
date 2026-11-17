@@ -75,6 +75,17 @@ interrupt() until the traveller answers; off-topic requests get a fixed reply
 without calling the agent. --no-clarify turns this off to save quota (the
 graph is then the Stage 5 one):
     uv run python -m ai_travel_assistant.tool_calling --chat --no-clarify
+
+Stage 7 makes the loop robust (robustness.py, faults.py). A tool that raises
+becomes an error result for that call only; the LLM sees a repaired history
+(tool calls left without results by a crash are closed); route_after_agent
+replaces tools_condition and stops a turn after MAX_TOOL_ROUNDS tool rounds,
+ending it with one wrap-up call. In --chat, transient Gemini errors are
+retried once by the llm node's RetryPolicy (the client itself does not retry,
+and 429s are never retried), and failures are shown as short, safe messages.
+Try an outage without breaking anything real (PowerShell):
+    $env:FAULT_INJECT = "weather"
+    uv run python -m ai_travel_assistant.tool_calling --chat
 """
 
 from __future__ import annotations
@@ -96,11 +107,12 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
-from langgraph.types import Command
+from langgraph.types import Command, RetryPolicy
 
+from ai_travel_assistant import faults
 from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
 from ai_travel_assistant.long_term_memory import (
     PreferenceExtractor,
@@ -129,6 +141,20 @@ from ai_travel_assistant.request_understanding import (
     route_after_understanding,
     trip_prompt_note,
     wait_for_reply_node,
+)
+from ai_travel_assistant.robustness import (
+    FALLBACK_REPLY,
+    MAX_TOOL_ROUNDS,
+    TO_DONE,
+    TO_FALLBACK,
+    TO_TOOLS,
+    WRAP_UP_INSTRUCTION,
+    close_pending_calls,
+    describe_llm_error,
+    llm_retry_policy,
+    make_route_after_agent,
+    repair_history,
+    tool_error_message,
 )
 from ai_travel_assistant.tools import (
     convert_currency,
@@ -235,6 +261,9 @@ SYSTEM_PROMPT = (
 # Who is chatting when nobody says: one local traveller on this machine.
 DEFAULT_USER = "local"
 
+# Stage 7: where a turn goes when it hits the tool-round cap.
+FALLBACK_RESPONSE = "fallback_response"
+
 # Node names for long-term memory (only added when the graph gets a Store).
 LOAD_MEMORY = "load_memory"
 SAVE_MEMORY = "save_memory"
@@ -308,7 +337,10 @@ def make_llm_node(
             state.get("missing_fields", []),
         )
         # Only what the LLM sees is trimmed; the state keeps every message.
-        history = history_for_llm(state["messages"], max_history_tokens)
+        # Stage 7: repair_history() then closes tool calls left without a
+        # result by an earlier failure, which the model API would reject.
+        # It builds a new list; the saved thread is never changed.
+        history = repair_history(history_for_llm(state["messages"], max_history_tokens))
         messages = [SystemMessage(prompt), *history]
         response = llm_with_tools.invoke(messages)
         # MessagesState uses the add_messages reducer: returning a list APPENDS
@@ -316,6 +348,47 @@ def make_llm_node(
         return {"messages": [response]}
 
     return llm_node
+
+
+def make_fallback_node(
+    llm_with_tools: BaseChatModel,
+    max_history_tokens: int | None = MAX_HISTORY_TOKENS,
+) -> Callable[[AgentState], dict]:
+    """Build the node that ends a turn that hit the tool-round cap.
+
+    1. The tool calls the cap stopped get "not run" results, so no call is
+       left without a result in the saved thread.
+    2. One wrap-up LLM call answers from the results gathered so far.
+    3. If that call fails, or asks for tools again, a fixed reply is used.
+    """
+
+    def fallback_node(state: AgentState) -> dict:
+        messages = state["messages"]
+        last = messages[-1] if messages else None
+        closed = (
+            close_pending_calls(last)
+            if isinstance(last, AIMessage) and last.tool_calls
+            else []
+        )
+        prompt = system_prompt_for(
+            state.get("user_prefs", []),
+            state.get("trip_request"),
+            state.get("missing_fields", []),
+        )
+        history = repair_history(
+            history_for_llm([*messages, *closed], max_history_tokens)
+        )
+        try:
+            reply = llm_with_tools.invoke(
+                [SystemMessage(f"{prompt} {WRAP_UP_INSTRUCTION}"), *history]
+            )
+        except Exception:  # the wrap-up is best effort; never crash the turn
+            reply = None
+        if not isinstance(reply, AIMessage) or reply.tool_calls or not reply.content:
+            reply = AIMessage(FALLBACK_REPLY)
+        return {"messages": [*closed, reply]}
+
+    return fallback_node
 
 
 def load_memory_node(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
@@ -363,6 +436,8 @@ def build_tool_agent_graph(
     preference_extractor: PreferenceExtractor | None = None,
     max_history_tokens: int | None = MAX_HISTORY_TOKENS,
     understander: RequestUnderstander | None = None,
+    max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    llm_retry: RetryPolicy | None = None,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -387,19 +462,33 @@ def build_tool_agent_graph(
     wait_for_reply pauses with interrupt() and loops back to understand_request
     with the reply. Interrupts need a saved state, so an understander requires
     a checkpointer. Without an understander the graph is the Stage 5 one.
+
+    Stage 7: the LLM may run tools max_tool_rounds times per turn; asking once
+    more sends the turn to fallback_response (one wrap-up call). A tool that
+    raises becomes an error result for that call only. llm_retry (e.g.
+    robustness.llm_retry_policy()) retries the llm node on transient Gemini
+    errors; it is the ONLY retry layer for Gemini, so build the model with
+    max_retries=0 when passing it. None: a failed call fails the turn.
     """
     if understander is not None and checkpointer is None:
         raise ValueError("an understander needs a checkpointer to pause and resume")
     llm_with_tools = model.bind_tools(list(tools))
 
     builder = StateGraph(AgentState, context_schema=AgentContext)
-    builder.add_node(LLM, make_llm_node(llm_with_tools, max_history_tokens))
+    # Only the llm node is retried: it just reads the state and calls the
+    # model, so running it again is safe. Tools retry inside their services.
+    builder.add_node(
+        LLM, make_llm_node(llm_with_tools, max_history_tokens), retry_policy=llm_retry
+    )
     # ToolNode looks at the last AIMessage, runs every tool call in it (several
-    # calls run in parallel), and returns one ToolMessage per call.
-    builder.add_node(TOOLS_NODE, ToolNode(list(tools)))
+    # calls run in parallel), and returns one ToolMessage per call. Stage 7:
+    # a tool that raises gives an error ToolMessage for THAT call only (the
+    # other calls keep their results), instead of crashing the whole turn.
+    builder.add_node(
+        TOOLS_NODE, ToolNode(list(tools), handle_tool_errors=tool_error_message)
+    )
 
-    # tools_condition returns "tools" if the last message has tool_calls,
-    # otherwise END ("__end__"). With save_memory, "done" goes there first.
+    # After an answer the turn ends; with save_memory it goes there first.
     after_answer = END
     if store is not None and preference_extractor is not None:
         builder.add_node(SAVE_MEMORY, make_save_memory_node(preference_extractor))
@@ -434,9 +523,16 @@ def build_tool_agent_graph(
         builder.add_node(LOAD_MEMORY, load_memory_node)
         builder.add_edge(START, LOAD_MEMORY)
         builder.add_edge(LOAD_MEMORY, first)
-    builder.add_conditional_edges(
-        LLM, tools_condition, {TOOLS_NODE: TOOLS_NODE, END: after_answer}
+    # Like tools_condition (tool calls -> tools, else done), plus the cap.
+    builder.add_node(
+        FALLBACK_RESPONSE, make_fallback_node(llm_with_tools, max_history_tokens)
     )
+    builder.add_conditional_edges(
+        LLM,
+        make_route_after_agent(max_tool_rounds),
+        {TO_TOOLS: TOOLS_NODE, TO_FALLBACK: FALLBACK_RESPONSE, TO_DONE: after_answer},
+    )
+    builder.add_edge(FALLBACK_RESPONSE, after_answer)
     # The loop: after a tool runs, the LLM reads its result and decides again.
     builder.add_edge(TOOLS_NODE, LLM)
     return builder.compile(checkpointer=checkpointer, store=store)
@@ -691,12 +787,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_clarify and not args.chat:
         parser.error("--no-clarify is used together with --chat")
 
+    # Stage 7: refuse a mistyped FAULT_INJECT, and say loudly when one is on.
+    try:
+        fault_warning = faults.describe_active_faults()
+    except faults.FaultConfigError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        return 1
+    if fault_warning:
+        print(fault_warning, file=sys.stderr)
+
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
         ConfigError,
         build_llm,
         load_settings,
-        safe_error_message,
     )
 
     try:
@@ -705,12 +809,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
 
-    llm = build_llm(settings, temperature=1.0)
     if args.chat:
+        # Stage 7: one retry layer. The client does not retry (max_retries=0);
+        # the graph's llm node retries a transient error once (llm_retry), and
+        # never a 429. The understander and extractor are not retried: they
+        # fall back (to the agent, or to not saving) instead.
+        llm = build_llm(settings, temperature=1.0, max_retries=0)
         # Conversations (checkpointer) and preferences (Store) live in the same
         # SQLite file, so both survive a restart. The extractor gets its own
         # model at temperature 0 and only runs when the gate matches.
-        precise_llm = build_llm(settings, temperature=0)
+        precise_llm = build_llm(settings, temperature=0, max_retries=0)
         extractor = make_llm_preference_extractor(precise_llm)
         # Stage 6: one extra call per message reads its intent and trip
         # details, at temperature 0 like the other extraction calls.
@@ -727,6 +835,7 @@ def main(argv: list[str] | None = None) -> int:
                 store=store,
                 preference_extractor=extractor,
                 understander=understander,
+                llm_retry=llm_retry_policy(),
             )
             try:
                 run_agent_chat(
@@ -734,22 +843,19 @@ def main(argv: list[str] | None = None) -> int:
                     thread_id=args.thread,
                     user_id=args.user,
                     show_steps=args.steps,
-                    describe_error=lambda exc: safe_error_message(
-                        exc, settings.api_key
-                    ),
+                    # A short, safe message: never the raw error text.
+                    describe_error=describe_llm_error,
                 )
             except (KeyboardInterrupt, EOFError):  # Ctrl+C / Ctrl+Z ends the chat
                 print("\nBye!")
         return 0
 
-    graph = build_tool_agent_graph(llm)
+    # One-shot mode keeps its Stage 3/4 setup: the client's own retries.
+    graph = build_tool_agent_graph(build_llm(settings, temperature=1.0))
     try:
         messages = run_tool_agent(graph, args.question)
     except Exception as exc:  # show a clean message instead of a traceback
-        print(
-            f"Request failed: {safe_error_message(exc, settings.api_key)}",
-            file=sys.stderr,
-        )
+        print(f"Request failed: {describe_llm_error(exc)}", file=sys.stderr)
         return 1
 
     if args.steps:

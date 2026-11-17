@@ -31,6 +31,7 @@ from typing import Any
 
 import httpx
 
+from ai_travel_assistant import faults
 from ai_travel_assistant.resilience import TTLCache, send_with_retry
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -199,7 +200,8 @@ def make_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
     return httpx.Client(
         timeout=REQUEST_TIMEOUT,
         headers={"User-Agent": USER_AGENT},
-        transport=transport,
+        # Stage 7: fails on purpose only if FAULT_INJECT names weather.
+        transport=transport or faults.transport_for("weather"),
     )
 
 
