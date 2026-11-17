@@ -90,6 +90,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
+from langgraph.types import Command
 
 from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
 from ai_travel_assistant.long_term_memory import (
@@ -100,6 +101,24 @@ from ai_travel_assistant.long_term_memory import (
     make_llm_preference_extractor,
     save_preferences,
     sqlite_store,
+)
+from ai_travel_assistant.request_understanding import (
+    ASK_CLARIFICATION,
+    CLARIFICATION_NAME,
+    OFF_TOPIC_NAME,
+    RESPOND_OFF_TOPIC,
+    TO_AGENT,
+    TO_CLARIFY,
+    TO_OFF_TOPIC,
+    UNDERSTAND_REQUEST,
+    WAIT_FOR_REPLY,
+    RequestUnderstander,
+    ask_clarification_node,
+    make_understand_request_node,
+    respond_off_topic_node,
+    route_after_understanding,
+    trip_prompt_note,
+    wait_for_reply_node,
 )
 from ai_travel_assistant.tools import (
     convert_currency,
@@ -212,9 +231,18 @@ SAVE_MEMORY = "save_memory"
 
 
 class AgentState(MessagesState):
-    """The messages, plus the traveller's saved preferences for this turn."""
+    """The messages, plus the traveller's saved preferences for this turn.
+
+    The other keys are used only when the graph has an understander (Stage 6);
+    nodes read them with .get(), so threads saved before Stage 6 still load.
+    """
 
     user_prefs: list[str]
+    trip_request: dict  # merged trip details (a TripRequest as a plain dict)
+    intent: str | None  # plan, modify, question, off_topic; None if unknown
+    missing_fields: list[str]  # critical fields still missing for a plan
+    clarification_context: str | None  # the question the latest reply answers
+    clarification_rounds: int  # questions asked in a row this turn
 
 
 @dataclass
@@ -228,15 +256,24 @@ class AgentContext:
     user_id: str = DEFAULT_USER
 
 
-def system_prompt_for(prefs: Sequence[str]) -> str:
-    """SYSTEM_PROMPT, plus the traveller's saved preferences if there are any."""
-    if not prefs:
-        return SYSTEM_PROMPT
-    return (
-        f"{SYSTEM_PROMPT} Known traveller preferences from earlier "
-        f"conversations: {'; '.join(prefs)}. Respect them in every plan, and "
-        "mention briefly when one changes a suggestion."
-    )
+def system_prompt_for(
+    prefs: Sequence[str],
+    trip: dict | None = None,
+    missing: Sequence[str] = (),
+) -> str:
+    """SYSTEM_PROMPT, plus saved preferences and the current trip, if any.
+
+    The trip details come from understand_request (Stage 6). Without them the
+    prompt is exactly the Stage 5 one.
+    """
+    prompt = SYSTEM_PROMPT
+    if prefs:
+        prompt += (
+            " Known traveller preferences from earlier "
+            f"conversations: {'; '.join(prefs)}. Respect them in every plan, and "
+            "mention briefly when one changes a suggestion."
+        )
+    return prompt + trip_prompt_note(trip, missing)
 
 
 def _user_id(runtime: Runtime[AgentContext]) -> str:
@@ -255,7 +292,11 @@ def make_llm_node(
     def llm_node(state: AgentState) -> dict:
         # The system prompt is added on every call but never stored in the
         # state, so the message history holds only the real conversation.
-        prompt = system_prompt_for(state.get("user_prefs", []))
+        prompt = system_prompt_for(
+            state.get("user_prefs", []),
+            state.get("trip_request"),
+            state.get("missing_fields", []),
+        )
         # Only what the LLM sees is trimmed; the state keeps every message.
         history = history_for_llm(state["messages"], max_history_tokens)
         messages = [SystemMessage(prompt), *history]
@@ -311,6 +352,7 @@ def build_tool_agent_graph(
     store: BaseStore | None = None,
     preference_extractor: PreferenceExtractor | None = None,
     max_history_tokens: int | None = MAX_HISTORY_TOKENS,
+    understander: RequestUnderstander | None = None,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -327,7 +369,17 @@ def build_tool_agent_graph(
 
     Every LLM call sees the current turn whole, plus earlier turns compacted
     and trimmed to max_history_tokens (None: send everything).
+
+    With an understander (Stage 6), every message is understood first:
+        ... -> understand_request --off_topic--> respond_off_topic -> (save) END
+                                  --clarify--> ask_clarification -> wait_for_reply
+                                  --agent----> llm <-> tools -> ...
+    wait_for_reply pauses with interrupt() and loops back to understand_request
+    with the reply. Interrupts need a saved state, so an understander requires
+    a checkpointer. Without an understander the graph is the Stage 5 one.
     """
+    if understander is not None and checkpointer is None:
+        raise ValueError("an understander needs a checkpointer to pause and resume")
     llm_with_tools = model.bind_tools(list(tools))
 
     builder = StateGraph(AgentState, context_schema=AgentContext)
@@ -336,13 +388,6 @@ def build_tool_agent_graph(
     # calls run in parallel), and returns one ToolMessage per call.
     builder.add_node(TOOLS_NODE, ToolNode(list(tools)))
 
-    if store is None:
-        builder.add_edge(START, LLM)
-    else:
-        builder.add_node(LOAD_MEMORY, load_memory_node)
-        builder.add_edge(START, LOAD_MEMORY)
-        builder.add_edge(LOAD_MEMORY, LLM)
-
     # tools_condition returns "tools" if the last message has tool_calls,
     # otherwise END ("__end__"). With save_memory, "done" goes there first.
     after_answer = END
@@ -350,6 +395,35 @@ def build_tool_agent_graph(
         builder.add_node(SAVE_MEMORY, make_save_memory_node(preference_extractor))
         builder.add_edge(SAVE_MEMORY, END)
         after_answer = SAVE_MEMORY
+
+    first = LLM
+    if understander is not None:
+        builder.add_node(UNDERSTAND_REQUEST, make_understand_request_node(understander))
+        builder.add_node(ASK_CLARIFICATION, ask_clarification_node)
+        builder.add_node(WAIT_FOR_REPLY, wait_for_reply_node)
+        builder.add_node(RESPOND_OFF_TOPIC, respond_off_topic_node)
+        builder.add_conditional_edges(
+            UNDERSTAND_REQUEST,
+            route_after_understanding,
+            {
+                TO_AGENT: LLM,
+                TO_CLARIFY: ASK_CLARIFICATION,
+                TO_OFF_TOPIC: RESPOND_OFF_TOPIC,
+            },
+        )
+        builder.add_edge(ASK_CLARIFICATION, WAIT_FOR_REPLY)
+        builder.add_edge(WAIT_FOR_REPLY, UNDERSTAND_REQUEST)
+        # Off-topic still passes save_memory: its free keyword gate catches a
+        # preference ("I'm vegetarian") the understander might misread.
+        builder.add_edge(RESPOND_OFF_TOPIC, after_answer)
+        first = UNDERSTAND_REQUEST
+
+    if store is None:
+        builder.add_edge(START, first)
+    else:
+        builder.add_node(LOAD_MEMORY, load_memory_node)
+        builder.add_edge(START, LOAD_MEMORY)
+        builder.add_edge(LOAD_MEMORY, first)
     builder.add_conditional_edges(
         LLM, tools_condition, {TOOLS_NODE: TOOLS_NODE, END: after_answer}
     )
@@ -376,15 +450,31 @@ def ask_agent(
     thread is loaded first, so the LLM sees the earlier turns; the returned
     list starts at the new HumanMessage (tool calls, results, final answer).
     user_id picks whose long-term preferences are loaded and saved.
+
+    If the thread is paused at a clarification question (Stage 6), the text is
+    the answer: the paused run is resumed with Command(resume=text). Sending it
+    as a new message instead would start a new run and drop the question.
+    The turn then ends with the agent's answer, or with the next question.
     """
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-    before = len(graph.get_state(config).values.get("messages", []))
-    state = graph.invoke(
-        {"messages": [HumanMessage(text)]},
-        config,
-        context=AgentContext(user_id=user_id),
+    snapshot = graph.get_state(config)
+    before = len(snapshot.values.get("messages", []))
+    graph_input = (
+        Command(resume=text)
+        if snapshot.interrupts
+        else {"messages": [HumanMessage(text)]}
     )
-    return state["messages"][before:]
+    graph.invoke(graph_input, config, context=AgentContext(user_id=user_id))
+    # Read the saved state: invoke()'s return value may also carry LangGraph's
+    # internal "__interrupt__" entry when the run paused.
+    return graph.get_state(config).values["messages"][before:]
+
+
+def pending_question(graph: CompiledStateGraph, thread_id: str) -> str | None:
+    """The clarification question a thread is paused at, or None."""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    interrupts = graph.get_state(config).interrupts
+    return str(interrupts[0].value) if interrupts else None
 
 
 def final_answer(messages: Sequence[AnyMessage]) -> str:
@@ -407,6 +497,10 @@ def describe_steps(messages: Sequence[AnyMessage]) -> list[str]:
         elif isinstance(message, AIMessage) and message.tool_calls:
             for call in message.tool_calls:
                 lines.append(f"[llm -> tool call] {call['name']}({call['args']})")
+        elif isinstance(message, AIMessage) and message.name == CLARIFICATION_NAME:
+            lines.append("[clarify -> waiting for the traveller]")
+        elif isinstance(message, AIMessage) and message.name == OFF_TOPIC_NAME:
+            lines.append("[off-topic -> fixed reply]")
         elif isinstance(message, AIMessage):
             lines.append("[llm -> final answer]")
         else:  # ToolMessage
