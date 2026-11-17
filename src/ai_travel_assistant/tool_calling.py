@@ -96,7 +96,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
@@ -130,7 +130,18 @@ from ai_travel_assistant.request_understanding import (
     trip_prompt_note,
     wait_for_reply_node,
 )
-from ai_travel_assistant.robustness import repair_history, tool_error_message
+from ai_travel_assistant.robustness import (
+    FALLBACK_REPLY,
+    MAX_TOOL_ROUNDS,
+    TO_DONE,
+    TO_FALLBACK,
+    TO_TOOLS,
+    WRAP_UP_INSTRUCTION,
+    close_pending_calls,
+    make_route_after_agent,
+    repair_history,
+    tool_error_message,
+)
 from ai_travel_assistant.tools import (
     convert_currency,
     estimate_travel_time,
@@ -236,6 +247,9 @@ SYSTEM_PROMPT = (
 # Who is chatting when nobody says: one local traveller on this machine.
 DEFAULT_USER = "local"
 
+# Stage 7: where a turn goes when it hits the tool-round cap.
+FALLBACK_RESPONSE = "fallback_response"
+
 # Node names for long-term memory (only added when the graph gets a Store).
 LOAD_MEMORY = "load_memory"
 SAVE_MEMORY = "save_memory"
@@ -322,6 +336,47 @@ def make_llm_node(
     return llm_node
 
 
+def make_fallback_node(
+    llm_with_tools: BaseChatModel,
+    max_history_tokens: int | None = MAX_HISTORY_TOKENS,
+) -> Callable[[AgentState], dict]:
+    """Build the node that ends a turn that hit the tool-round cap.
+
+    1. The tool calls the cap stopped get "not run" results, so no call is
+       left without a result in the saved thread.
+    2. One wrap-up LLM call answers from the results gathered so far.
+    3. If that call fails, or asks for tools again, a fixed reply is used.
+    """
+
+    def fallback_node(state: AgentState) -> dict:
+        messages = state["messages"]
+        last = messages[-1] if messages else None
+        closed = (
+            close_pending_calls(last)
+            if isinstance(last, AIMessage) and last.tool_calls
+            else []
+        )
+        prompt = system_prompt_for(
+            state.get("user_prefs", []),
+            state.get("trip_request"),
+            state.get("missing_fields", []),
+        )
+        history = repair_history(
+            history_for_llm([*messages, *closed], max_history_tokens)
+        )
+        try:
+            reply = llm_with_tools.invoke(
+                [SystemMessage(f"{prompt} {WRAP_UP_INSTRUCTION}"), *history]
+            )
+        except Exception:  # the wrap-up is best effort; never crash the turn
+            reply = None
+        if not isinstance(reply, AIMessage) or reply.tool_calls or not reply.content:
+            reply = AIMessage(FALLBACK_REPLY)
+        return {"messages": [*closed, reply]}
+
+    return fallback_node
+
+
 def load_memory_node(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
     """Read the traveller's preferences from the Store (no LLM call)."""
     return {"user_prefs": load_preferences(runtime.store, _user_id(runtime))}
@@ -367,6 +422,7 @@ def build_tool_agent_graph(
     preference_extractor: PreferenceExtractor | None = None,
     max_history_tokens: int | None = MAX_HISTORY_TOKENS,
     understander: RequestUnderstander | None = None,
+    max_tool_rounds: int = MAX_TOOL_ROUNDS,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -391,6 +447,10 @@ def build_tool_agent_graph(
     wait_for_reply pauses with interrupt() and loops back to understand_request
     with the reply. Interrupts need a saved state, so an understander requires
     a checkpointer. Without an understander the graph is the Stage 5 one.
+
+    Stage 7: the LLM may run tools max_tool_rounds times per turn; asking once
+    more sends the turn to fallback_response (one wrap-up call). A tool that
+    raises becomes an error result for that call only.
     """
     if understander is not None and checkpointer is None:
         raise ValueError("an understander needs a checkpointer to pause and resume")
@@ -406,8 +466,7 @@ def build_tool_agent_graph(
         TOOLS_NODE, ToolNode(list(tools), handle_tool_errors=tool_error_message)
     )
 
-    # tools_condition returns "tools" if the last message has tool_calls,
-    # otherwise END ("__end__"). With save_memory, "done" goes there first.
+    # After an answer the turn ends; with save_memory it goes there first.
     after_answer = END
     if store is not None and preference_extractor is not None:
         builder.add_node(SAVE_MEMORY, make_save_memory_node(preference_extractor))
@@ -442,9 +501,16 @@ def build_tool_agent_graph(
         builder.add_node(LOAD_MEMORY, load_memory_node)
         builder.add_edge(START, LOAD_MEMORY)
         builder.add_edge(LOAD_MEMORY, first)
-    builder.add_conditional_edges(
-        LLM, tools_condition, {TOOLS_NODE: TOOLS_NODE, END: after_answer}
+    # Like tools_condition (tool calls -> tools, else done), plus the cap.
+    builder.add_node(
+        FALLBACK_RESPONSE, make_fallback_node(llm_with_tools, max_history_tokens)
     )
+    builder.add_conditional_edges(
+        LLM,
+        make_route_after_agent(max_tool_rounds),
+        {TO_TOOLS: TOOLS_NODE, TO_FALLBACK: FALLBACK_RESPONSE, TO_DONE: after_answer},
+    )
+    builder.add_edge(FALLBACK_RESPONSE, after_answer)
     # The loop: after a tool runs, the LLM reads its result and decides again.
     builder.add_edge(TOOLS_NODE, LLM)
     return builder.compile(checkpointer=checkpointer, store=store)
