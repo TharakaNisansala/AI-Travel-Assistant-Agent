@@ -332,3 +332,39 @@ def test_close_pending_calls_answers_every_stopped_call():
 
 def test_fallback_reply_is_plain_text():
     assert "Traceback" not in FALLBACK_REPLY and len(FALLBACK_REPLY) < 300
+
+
+# --- Stage 8: the final-answer tool ------------------------------------------------
+
+
+def submit_call(call_id: str = "s1") -> dict:
+    return {"name": "submit_itinerary", "args": {}, "id": call_id}
+
+
+def test_a_final_tool_call_goes_to_compose():
+    route = make_route_after_agent(final_tool="submit_itinerary")
+    messages = [HumanMessage("Plan"), AIMessage("", tool_calls=[submit_call()])]
+    assert route({"messages": messages}) == "compose"
+
+
+def test_a_final_tool_call_beside_other_calls_still_goes_to_compose():
+    route = make_route_after_agent(final_tool="submit_itinerary")
+    last = AIMessage("", tool_calls=[call("a"), submit_call()])
+    assert route({"messages": [HumanMessage("Plan"), last]}) == "compose"
+
+
+def test_the_final_tool_is_accepted_even_past_the_cap():
+    route = make_route_after_agent(max_tool_rounds=1, final_tool="submit_itinerary")
+    messages = [
+        HumanMessage("Plan"),
+        *tool_round(1),
+        *tool_round(2),
+        AIMessage("", tool_calls=[submit_call()]),
+    ]
+    assert route({"messages": messages}) == "compose"
+
+
+def test_without_a_final_tool_the_router_is_unchanged():
+    route = make_route_after_agent()
+    messages = [HumanMessage("Plan"), AIMessage("", tool_calls=[submit_call()])]
+    assert route({"messages": messages}) == "tools"
