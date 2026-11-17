@@ -33,6 +33,15 @@ def fresh_caches_and_no_sleep(monkeypatch) -> list[float]:
 
 
 @pytest.fixture(autouse=True)
+def no_injected_faults(monkeypatch) -> None:
+    """Start every test with fault injection off, whatever the shell has set.
+
+    Tests that want a fault set FAULT_INJECT themselves with monkeypatch.
+    """
+    monkeypatch.delenv("FAULT_INJECT", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def no_real_network(request, monkeypatch) -> None:
     """Fail any real HTTP request made by an offline (non-live) test."""
     if request.node.get_closest_marker("live"):
