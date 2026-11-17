@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, SystemMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from ai_travel_assistant.long_term_memory import (
@@ -20,6 +22,15 @@ from ai_travel_assistant.long_term_memory import (
     preferences_namespace,
     save_preferences,
     sqlite_store,
+)
+from ai_travel_assistant.tool_calling import (
+    LOAD_MEMORY,
+    SAVE_MEMORY,
+    SYSTEM_PROMPT,
+    ask_agent,
+    build_tool_agent_graph,
+    final_answer,
+    system_prompt_for,
 )
 
 # --- The gate -----------------------------------------------------------------
@@ -144,3 +155,123 @@ def test_sqlite_store_keeps_preferences_after_reopening(tmp_path):
         save_preferences(store, "u1", ["vegetarian"])
     with sqlite_store(db) as store:
         assert load_preferences(store, "u1") == ["vegetarian"]
+
+
+# --- In the agent graph: load_memory and save_memory --------------------------
+
+
+class RecordingModel(GenericFakeChatModel):
+    """Scripted replies; records the messages of every call."""
+
+    calls: list = []
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.calls.append(list(messages))
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+def recording(*replies: str) -> RecordingModel:
+    return RecordingModel(messages=iter(AIMessage(r) for r in replies), calls=[])
+
+
+class FakeExtractor:
+    """Plays the LLM extractor: returns fixed preferences, counts its calls."""
+
+    def __init__(self, *found: str, error: Exception | None = None):
+        self.found = list(found)
+        self.error = error
+        self.calls: list[tuple[str, list[str]]] = []
+
+    def __call__(self, text, known):
+        self.calls.append((text, list(known)))
+        if self.error:
+            raise self.error
+        return self.found
+
+
+def memory_graph(model, extractor, store=None):
+    return build_tool_agent_graph(
+        model,
+        checkpointer=InMemorySaver(),
+        store=store if store is not None else InMemoryStore(),
+        preference_extractor=extractor,
+    )
+
+
+def test_preference_from_one_thread_shapes_another():
+    model = recording("Noted, vegetarian food it is.", "Galle plan, veg options.")
+    extractor = FakeExtractor("vegetarian")
+    graph = memory_graph(model, extractor)
+
+    ask_agent(graph, "thread-a", "I'm vegetarian.", user_id="u1")
+    ask_agent(graph, "thread-b", "Plan 2 days in Galle.", user_id="u1")
+
+    second_prompt = model.calls[1][0]
+    assert isinstance(second_prompt, SystemMessage)
+    assert "Known traveller preferences" in second_prompt.content
+    assert "vegetarian" in second_prompt.content
+    # Thread B's history holds only its own message.
+    assert [m.content for m in model.calls[1][1:]] == ["Plan 2 days in Galle."]
+
+
+def test_plain_trip_request_never_calls_the_extractor():
+    extractor = FakeExtractor("should not be saved")
+    store = InMemoryStore()
+    graph = memory_graph(recording("Here is your plan."), extractor, store)
+
+    ask_agent(graph, "t1", "Plan a 3-day trip to Kandy.", user_id="u1")
+
+    assert extractor.calls == []
+    assert load_preferences(store, "u1") == []
+
+
+def test_other_travellers_do_not_see_the_preference():
+    model = recording("Noted.", "Plan.")
+    graph = memory_graph(model, FakeExtractor("vegan"))
+
+    ask_agent(graph, "t1", "I'm vegan.", user_id="alice")
+    ask_agent(graph, "t2", "Plan Ella.", user_id="bob")
+
+    assert "Known traveller preferences" not in model.calls[1][0].content
+
+
+def test_extractor_sees_known_preferences():
+    store = InMemoryStore()
+    save_preferences(store, "u1", ["vegetarian"])
+    extractor = FakeExtractor()
+    graph = memory_graph(recording("Ok."), extractor, store)
+
+    ask_agent(graph, "t1", "I hate early mornings.", user_id="u1")
+
+    assert extractor.calls == [("I hate early mornings.", ["vegetarian"])]
+
+
+def test_extractor_failure_keeps_the_answer():
+    graph = memory_graph(
+        recording("Still answered."), FakeExtractor(error=RuntimeError("429"))
+    )
+
+    turn = ask_agent(graph, "t1", "I'm vegetarian.", user_id="u1")
+
+    assert final_answer(turn) == "Still answered."
+
+
+def test_without_a_store_the_graph_has_no_memory_nodes():
+    graph = build_tool_agent_graph(recording("Hi."))
+    assert LOAD_MEMORY not in graph.nodes
+    assert SAVE_MEMORY not in graph.nodes
+
+
+def test_store_without_extractor_only_loads():
+    graph = build_tool_agent_graph(
+        recording("Hi."), checkpointer=InMemorySaver(), store=InMemoryStore()
+    )
+    assert LOAD_MEMORY in graph.nodes
+    assert SAVE_MEMORY not in graph.nodes
+
+
+def test_system_prompt_for_without_preferences_is_unchanged():
+    assert system_prompt_for([]) == SYSTEM_PROMPT
