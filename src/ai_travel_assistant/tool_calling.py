@@ -99,7 +99,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
-from langgraph.types import Command
+from langgraph.types import Command, RetryPolicy
 
 from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
 from ai_travel_assistant.long_term_memory import (
@@ -423,6 +423,7 @@ def build_tool_agent_graph(
     max_history_tokens: int | None = MAX_HISTORY_TOKENS,
     understander: RequestUnderstander | None = None,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    llm_retry: RetryPolicy | None = None,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -450,14 +451,21 @@ def build_tool_agent_graph(
 
     Stage 7: the LLM may run tools max_tool_rounds times per turn; asking once
     more sends the turn to fallback_response (one wrap-up call). A tool that
-    raises becomes an error result for that call only.
+    raises becomes an error result for that call only. llm_retry (e.g.
+    robustness.llm_retry_policy()) retries the llm node on transient Gemini
+    errors; it is the ONLY retry layer for Gemini, so build the model with
+    max_retries=0 when passing it. None: a failed call fails the turn.
     """
     if understander is not None and checkpointer is None:
         raise ValueError("an understander needs a checkpointer to pause and resume")
     llm_with_tools = model.bind_tools(list(tools))
 
     builder = StateGraph(AgentState, context_schema=AgentContext)
-    builder.add_node(LLM, make_llm_node(llm_with_tools, max_history_tokens))
+    # Only the llm node is retried: it just reads the state and calls the
+    # model, so running it again is safe. Tools retry inside their services.
+    builder.add_node(
+        LLM, make_llm_node(llm_with_tools, max_history_tokens), retry_policy=llm_retry
+    )
     # ToolNode looks at the last AIMessage, runs every tool call in it (several
     # calls run in parallel), and returns one ToolMessage per call. Stage 7:
     # a tool that raises gives an error ToolMessage for THAT call only (the
