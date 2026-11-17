@@ -7,14 +7,17 @@ the earlier turn; with a new thread_id it must not.
 
 from __future__ import annotations
 
+import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
+from ai_travel_assistant import tool_calling
 from ai_travel_assistant.tool_calling import (
     ask_agent,
     build_tool_agent_graph,
     final_answer,
+    run_agent_chat,
 )
 
 
@@ -86,3 +89,85 @@ def test_system_prompt_is_not_saved_in_the_thread():
     assert not any(isinstance(m, SystemMessage) for m in saved)
     # The prompt is still sent once per call, at the front.
     assert sum(isinstance(m, SystemMessage) for m in model.calls[1]) == 1
+
+
+# --- The terminal chat loop ---------------------------------------------------
+
+
+def fake_terminal(*lines: str):
+    """read() returns the given lines in order; write() records the output."""
+    replies = iter(lines)
+    shown: list[str] = []
+    return (lambda prompt: next(replies)), shown.append, shown
+
+
+def test_chat_keeps_context_between_messages():
+    model = recording("Plan: two days.", "Day 2 made easier.")
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    read, write, shown = fake_terminal("Plan 2 days.", "Make day 2 easier.", "/quit")
+
+    run_agent_chat(graph, read, write)
+
+    assert texts(model.calls[1])[:2] == ["Plan 2 days.", "Plan: two days."]
+    assert shown[-3:] == ["AI: Plan: two days.", "AI: Day 2 made easier.", "Bye!"]
+
+
+def test_new_command_starts_a_fresh_thread():
+    model = recording("Answer one.", "Answer two.")
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    read, write, shown = fake_terminal("First trip", "/new", "Second trip", "/exit")
+
+    run_agent_chat(graph, read, write)
+
+    assert texts(model.calls[1]) == ["Second trip"]
+    assert "Started a new conversation." in shown
+
+
+def test_blank_lines_are_skipped_without_calling_the_model():
+    model = recording("Only answer.")
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    read, write, _ = fake_terminal("", "   ", "Hello", "/quit")
+
+    run_agent_chat(graph, read, write)
+
+    assert len(model.calls) == 1
+
+
+def test_show_steps_prints_the_turns_steps():
+    model = recording("Hi there.")
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    read, write, shown = fake_terminal("Hello", "/quit")
+
+    run_agent_chat(graph, read, write, show_steps=True)
+
+    assert "[human] Hello\n[llm -> final answer]" in shown
+
+
+class FailingOnceModel(RecordingModel):
+    """Raises on the first call (like a Gemini 503), then answers normally."""
+
+    failed: bool = False
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        if not self.failed:
+            self.failed = True
+            raise RuntimeError("503 UNAVAILABLE")
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+def test_failed_turn_is_reported_and_the_chat_goes_on():
+    model = FailingOnceModel(messages=iter([AIMessage("Works now.")]), calls=[])
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    read, write, shown = fake_terminal("Try 1", "Try 2", "/quit")
+
+    run_agent_chat(graph, read, write, describe_error=str)
+
+    assert "Request failed: 503 UNAVAILABLE" in shown
+    assert "AI: Works now." in shown
+
+
+def test_cli_needs_a_question_or_chat():
+    with pytest.raises(SystemExit):
+        tool_calling.main([])
+    with pytest.raises(SystemExit):
+        tool_calling.main(["Where to hike?", "--chat"])
