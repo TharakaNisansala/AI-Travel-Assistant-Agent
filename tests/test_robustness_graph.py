@@ -270,3 +270,72 @@ def test_preferences_are_still_saved_after_the_fallback(tools_ok):
     ask_agent(graph, "t1", "I'm vegetarian, what is the weather?")
 
     assert load_preferences(store, "local") == ["vegetarian"]
+
+
+# --- RetryPolicy on the llm node -------------------------------------------------
+
+
+def gemini_error(code: int, message: str = "Try later."):
+    from google.genai import errors as genai_errors
+
+    cls = genai_errors.ServerError if code >= 500 else genai_errors.ClientError
+    return cls(code, {"error": {"code": code, "message": message}})
+
+
+def retrying_graph(model, **kwargs):
+    from ai_travel_assistant.robustness import llm_retry_policy
+
+    return build_tool_agent_graph(
+        model,
+        checkpointer=InMemorySaver(),
+        llm_retry=llm_retry_policy(initial_interval=0),  # no real sleeping
+        **kwargs,
+    )
+
+
+def test_one_transient_failure_is_retried_once():
+    model = scripted("Answer.", fail_on={0: gemini_error(503)})
+    turn = ask_agent(retrying_graph(model), "t1", "Hi")
+    assert final_answer(turn) == "Answer."
+    assert len(model.calls) == 2
+
+
+def test_two_transient_failures_fail_the_turn_after_two_attempts():
+    model = scripted("Never.", fail_on={0: gemini_error(504), 1: gemini_error(503)})
+    with pytest.raises(Exception, match="503"):
+        ask_agent(retrying_graph(model), "t1", "Hi")
+    assert len(model.calls) == 2
+
+
+@pytest.mark.parametrize("code", [429, 400, 401])
+def test_rate_limits_and_bad_requests_are_never_retried(code):
+    model = scripted("Never.", fail_on={0: gemini_error(code)})
+    with pytest.raises(Exception, match=str(code)):
+        ask_agent(retrying_graph(model), "t1", "Hi")
+    assert len(model.calls) == 1
+
+
+def test_a_retry_does_not_run_the_tools_again(monkeypatch):
+    runs = []
+    monkeypatch.setattr(
+        tool_calling.get_weather_forecast,
+        "func",
+        lambda **_: runs.append(1) or "Forecast.",
+    )
+    model = scripted(
+        tool_step("get_weather_forecast"), "Sunny.", fail_on={1: gemini_error(503)}
+    )
+
+    turn = ask_agent(retrying_graph(model), "t1", "Weather?")
+
+    assert final_answer(turn) == "Sunny."
+    assert len(runs) == 1
+    assert len(model.calls) == 3
+
+
+def test_without_a_retry_policy_a_failure_reaches_the_caller():
+    model = scripted("Answer.", fail_on={0: gemini_error(503)})
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    with pytest.raises(Exception, match="503"):
+        ask_agent(graph, "t1", "Hi")
+    assert len(model.calls) == 1
