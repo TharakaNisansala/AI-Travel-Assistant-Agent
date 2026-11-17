@@ -445,3 +445,97 @@ def test_a_failure_on_one_thread_leaves_a_paused_thread_alone():
         ask_agent(graph, "other", "Galle, 2 days")
 
     assert pending_question(graph, "paused") is not None
+
+
+# --- The CLI: one retry layer and safe messages ------------------------------
+
+
+FAKE_KEY = "AIzaFAKE-key-for-tests-0123456789"
+
+
+@pytest.fixture
+def fake_cli(monkeypatch, tmp_path):
+    """Replace settings, the model factory and the chat loop; record the setup."""
+    from ai_travel_assistant import llm_basics
+
+    seen: dict = {"build_llm": []}
+    settings = llm_basics.GeminiSettings(model="fake-model", api_key=FAKE_KEY)
+    monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
+
+    def fake_build_llm(s, **kwargs):
+        seen["build_llm"].append(kwargs)
+        return scripted("Hi.")
+
+    monkeypatch.setattr(llm_basics, "build_llm", fake_build_llm)
+
+    def fake_chat(graph, **kwargs):
+        seen["graph"] = graph
+        seen.update(kwargs)
+
+    monkeypatch.setattr(tool_calling, "run_agent_chat", fake_chat)
+    seen["db"] = str(tmp_path / "chat.sqlite")
+    return seen
+
+
+def test_chat_uses_one_retry_layer(fake_cli):
+    from ai_travel_assistant.robustness import (
+        describe_llm_error,
+        is_transient_llm_error,
+    )
+
+    assert tool_calling.main(["--chat", "--db", fake_cli["db"]]) == 0
+
+    # Every chat model is built without client retries...
+    assert fake_cli["build_llm"]
+    assert all(kw.get("max_retries") == 0 for kw in fake_cli["build_llm"])
+    # ...and the graph's llm node retries transient errors once.
+    policy = fake_cli["graph"].builder.nodes[tool_calling.LLM].retry_policy
+    assert policy.max_attempts == 2
+    assert policy.retry_on is is_transient_llm_error
+    # Failed turns are described safely.
+    assert fake_cli["describe_error"] is describe_llm_error
+
+
+def test_no_other_node_is_retried(fake_cli):
+    tool_calling.main(["--chat", "--db", fake_cli["db"]])
+    nodes = fake_cli["graph"].builder.nodes
+    retried = [name for name, spec in nodes.items() if spec.retry_policy]
+    assert retried == [tool_calling.LLM]
+
+
+def test_one_shot_failure_message_hides_the_error_text(monkeypatch, capsys):
+    from ai_travel_assistant import llm_basics
+
+    settings = llm_basics.GeminiSettings(model="fake-model", api_key=FAKE_KEY)
+    leaky = RuntimeError(f"boom key={FAKE_KEY} Traceback (most recent call last)")
+    monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
+    monkeypatch.setattr(
+        llm_basics,
+        "build_llm",
+        lambda s, **kw: scripted("Never.", fail_on={0: leaky}),
+    )
+
+    assert tool_calling.main(["Where to hike?"]) == 1
+    err = capsys.readouterr().err
+    assert FAKE_KEY not in err
+    assert "Traceback" not in err
+    assert "Request failed: Something went wrong (RuntimeError)" in err
+
+
+def test_chat_shows_a_safe_message_for_a_busy_gemini():
+    from ai_travel_assistant.robustness import BUSY_MESSAGE, describe_llm_error
+
+    model = scripted("Works now.", fail_on={0: gemini_error(503)})
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+    replies = iter(["Try 1", "Try 2", "/quit"])
+    shown: list[str] = []
+
+    tool_calling.run_agent_chat(
+        graph,
+        lambda prompt: next(replies),
+        shown.append,
+        describe_error=describe_llm_error,
+    )
+
+    assert f"Request failed: {BUSY_MESSAGE}" in shown
+    assert "AI: Works now." in shown
