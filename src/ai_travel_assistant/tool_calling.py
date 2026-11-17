@@ -91,6 +91,7 @@ Try an outage without breaking anything real (PowerShell):
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 import uuid
@@ -117,6 +118,7 @@ from ai_travel_assistant import faults
 from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
 from ai_travel_assistant.itinerary_grounding import SUBMIT_TOOL
 from ai_travel_assistant.itinerary_output import (
+    ITINERARY_NAME,
     ITINERARY_RULE,
     compose_itinerary,
     has_submit_call,
@@ -668,7 +670,16 @@ def describe_steps(messages: Sequence[AnyMessage]) -> list[str]:
             lines.append(f"[human] {content_to_text(message.content)}")
         elif isinstance(message, AIMessage) and message.tool_calls:
             for call in message.tool_calls:
-                lines.append(f"[llm -> tool call] {call['name']}({call['args']})")
+                if call["name"] == SUBMIT_TOOL:  # Stage 8: too big to print
+                    args = call["args"]
+                    lines.append(
+                        f"[llm -> submit_itinerary] {args.get('days')} days in "
+                        f"{args.get('destination')}"
+                    )
+                else:
+                    lines.append(f"[llm -> tool call] {call['name']}({call['args']})")
+        elif isinstance(message, AIMessage) and message.name == ITINERARY_NAME:
+            lines.append("[compose -> itinerary checked and shown]")
         elif isinstance(message, AIMessage) and message.name == CLARIFICATION_NAME:
             lines.append("[clarify -> waiting for the traveller]")
         elif isinstance(message, AIMessage) and message.name == OFF_TOPIC_NAME:
@@ -687,6 +698,17 @@ NEW_COMMAND = "/new"
 QUIT_COMMANDS = frozenset({"/quit", "/exit"})
 PREFS_COMMAND = "/prefs"
 FORGET_COMMAND = "/forget"
+ITINERARY_COMMAND = "/itinerary"
+NO_ITINERARY = "No itinerary in this conversation yet."
+
+
+def itinerary_json(graph: CompiledStateGraph, thread_id: str) -> str:
+    """The thread's last checked itinerary as JSON (Stage 8), without the LLM."""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    itinerary = graph.get_state(config).values.get("itinerary")
+    if not itinerary:
+        return NO_ITINERARY
+    return json.dumps(itinerary, indent=2, ensure_ascii=False)
 
 
 # Where --chat keeps its conversations. Git-ignored: it holds real chat text.
@@ -775,7 +797,8 @@ def run_agent_chat(
             write(f"No saved messages for {thread_id}; starting it now.")
     write(
         f"Type {NEW_COMMAND} for a new conversation, {PREFS_COMMAND} or "
-        f"{FORGET_COMMAND} for saved preferences, /quit to stop."
+        f"{FORGET_COMMAND} for saved preferences, {ITINERARY_COMMAND} for the "
+        "last itinerary as JSON, /quit to stop."
     )
     while True:
         text = read("You: ").strip()
@@ -790,6 +813,9 @@ def run_agent_chat(
             continue
         if text.lower() in (PREFS_COMMAND, FORGET_COMMAND):
             write(preference_command(graph.store, user_id, text.lower()))
+            continue
+        if text.lower() == ITINERARY_COMMAND:
+            write(itinerary_json(graph, thread_id))
             continue
         try:
             turn = ask_agent(graph, thread_id, text, user_id=user_id)
@@ -834,6 +860,11 @@ def main(argv: list[str] | None = None) -> int:
         help=f"with --chat: whose preferences to use (default: {DEFAULT_USER})",
     )
     parser.add_argument(
+        "--json",
+        action="store_true",
+        help="with a question: print the structured itinerary as JSON (no --chat)",
+    )
+    parser.add_argument(
         "--no-clarify",
         action="store_true",
         help=(
@@ -852,6 +883,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--user is used together with --chat")
     if args.no_clarify and not args.chat:
         parser.error("--no-clarify is used together with --chat")
+    if args.json and args.chat:
+        parser.error("--json is for one question; in --chat type /itinerary")
 
     # Stage 7: refuse a mistyped FAULT_INJECT, and say loudly when one is on.
     try:
@@ -902,6 +935,9 @@ def main(argv: list[str] | None = None) -> int:
                 preference_extractor=extractor,
                 understander=understander,
                 llm_retry=llm_retry_policy(),
+                # Stage 8: itineraries come back structured, checked and
+                # rendered (no extra Gemini call); /itinerary shows the JSON.
+                structured_itinerary=True,
             )
             try:
                 run_agent_chat(
@@ -916,17 +952,27 @@ def main(argv: list[str] | None = None) -> int:
                 print("\nBye!")
         return 0
 
-    # One-shot mode keeps its Stage 3/4 setup: the client's own retries.
-    graph = build_tool_agent_graph(build_llm(settings, temperature=1.0))
+    # One-shot mode keeps its Stage 3/4 retries (the client's own), and gets
+    # Stage 8's structured itineraries.
+    graph = build_tool_agent_graph(
+        build_llm(settings, temperature=1.0), structured_itinerary=True
+    )
     try:
-        messages = run_tool_agent(graph, args.question)
+        state = graph.invoke({"messages": [HumanMessage(args.question)]})
     except Exception as exc:  # show a clean message instead of a traceback
         print(f"Request failed: {describe_llm_error(exc)}", file=sys.stderr)
         return 1
+    messages = state["messages"]
 
     if args.steps:
         print("\n".join(describe_steps(messages)))
         print()
+    if args.json:
+        itinerary = state.get("itinerary")
+        if itinerary:
+            print(json.dumps(itinerary, indent=2, ensure_ascii=False))
+            return 0
+        print(NO_ITINERARY, file=sys.stderr)
     print(final_answer(messages))
     return 0
 
