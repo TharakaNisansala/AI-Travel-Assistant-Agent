@@ -216,10 +216,11 @@ def repair_history(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
 
 MAX_TOOL_ROUNDS = 4
 
-AgentRoute = Literal["tools", "fallback", "done"]
+AgentRoute = Literal["tools", "fallback", "done", "compose"]
 TO_TOOLS: AgentRoute = "tools"
 TO_FALLBACK: AgentRoute = "fallback"
 TO_DONE: AgentRoute = "done"
+TO_COMPOSE: AgentRoute = "compose"  # Stage 8: the agent submitted its final answer
 
 
 def tool_rounds_this_turn(messages: Sequence[AnyMessage]) -> int:
@@ -238,11 +239,16 @@ def tool_rounds_this_turn(messages: Sequence[AnyMessage]) -> int:
 
 def make_route_after_agent(
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    final_tool: str | None = None,
 ) -> Callable[[Mapping], AgentRoute]:
     """Build the router that replaces tools_condition, with a loop cap.
 
     The LLM may run tools max_tool_rounds times in one turn; when it asks a
     (max_tool_rounds + 1)-th time, the turn goes to the fallback answer instead.
+
+    final_tool (Stage 8, e.g. "submit_itinerary") names a tool that FINISHES
+    the turn: a call to it goes to compose, checked before the cap, because
+    finishing must never be blocked by the limit on gathering data.
     """
 
     def route_after_agent(state: Mapping) -> AgentRoute:
@@ -250,6 +256,8 @@ def make_route_after_agent(
         last = messages[-1] if messages else None
         if not (isinstance(last, AIMessage) and last.tool_calls):
             return TO_DONE
+        if final_tool and any(call["name"] == final_tool for call in last.tool_calls):
+            return TO_COMPOSE
         if tool_rounds_this_turn(messages) > max_tool_rounds:
             return TO_FALLBACK
         return TO_TOOLS
