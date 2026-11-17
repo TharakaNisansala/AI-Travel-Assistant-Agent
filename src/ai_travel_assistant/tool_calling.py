@@ -60,6 +60,12 @@ thread (each message makes the usual 2-4 Gemini calls):
 The chat saves its checkpoints in a SQLite file (DEFAULT_CHAT_DB), so a
 conversation survives a restart; reopen it with the id printed at the start:
     uv run python -m ai_travel_assistant.tool_calling --chat --thread <id>
+The chat also has long-term memory (long_term_memory.py): load_memory reads the
+traveller's saved preferences before the LLM, and save_memory stores new ones
+after the answer, but only spends a Gemini call when a message looks like a
+preference ("I'm vegetarian"). /prefs and /forget show or clear them; --user
+picks the traveller:
+    uv run python -m ai_travel_assistant.tool_calling --chat --user tharaka
 """
 
 from __future__ import annotations
@@ -87,9 +93,12 @@ from langgraph.store.base import BaseStore
 
 from ai_travel_assistant.long_term_memory import (
     PreferenceExtractor,
+    clear_preferences,
     load_preferences,
     looks_like_preference,
+    make_llm_preference_extractor,
     save_preferences,
+    sqlite_store,
 )
 from ai_travel_assistant.tools import (
     convert_currency,
@@ -402,6 +411,8 @@ def describe_steps(messages: Sequence[AnyMessage]) -> list[str]:
 
 NEW_COMMAND = "/new"
 QUIT_COMMANDS = frozenset({"/quit", "/exit"})
+PREFS_COMMAND = "/prefs"
+FORGET_COMMAND = "/forget"
 
 
 # Where --chat keeps its conversations. Git-ignored: it holds real chat text.
@@ -435,12 +446,25 @@ def saved_message_count(graph: CompiledStateGraph, thread_id: str) -> int:
     return len(graph.get_state(config).values.get("messages", []))
 
 
+def preference_command(store: BaseStore | None, user_id: str, command: str) -> str:
+    """Answer /prefs or /forget for this traveller."""
+    if store is None:
+        return "Long-term memory is off for this chat."
+    if command == FORGET_COMMAND:
+        return f"Forgot {clear_preferences(store, user_id)} saved preferences."
+    prefs = load_preferences(store, user_id)
+    if not prefs:
+        return "No saved preferences yet."
+    return "Saved preferences: " + "; ".join(prefs)
+
+
 def run_agent_chat(
     graph: CompiledStateGraph,
     read: Callable[[str], str] = input,
     write: Callable[[str], None] = print,
     *,
     thread_id: str | None = None,
+    user_id: str = DEFAULT_USER,
     show_steps: bool = False,
     describe_error: Callable[[Exception], str] = lambda exc: type(exc).__name__,
 ) -> None:
@@ -451,6 +475,9 @@ def run_agent_chat(
     continue a saved conversation; otherwise a new one starts. /new starts a
     fresh thread (the old one stays saved), /quit or /exit ends the chat. A
     failed turn (e.g. a Gemini 503) is reported and the chat goes on.
+
+    If the graph has a Store, /prefs lists the traveller's saved preferences
+    and /forget deletes them (neither calls the LLM).
 
     read and write default to input() and print(); tests pass fakes. Ctrl+C
     or end of input (EOFError) is left to the caller.
@@ -464,7 +491,10 @@ def run_agent_chat(
             write(f"Continuing conversation {thread_id} ({count} saved messages).")
         else:
             write(f"No saved messages for {thread_id}; starting it now.")
-    write(f"Type {NEW_COMMAND} for a new conversation, /quit to stop.")
+    write(
+        f"Type {NEW_COMMAND} for a new conversation, {PREFS_COMMAND} or "
+        f"{FORGET_COMMAND} for saved preferences, /quit to stop."
+    )
     while True:
         text = read("You: ").strip()
         if not text:
@@ -476,8 +506,11 @@ def run_agent_chat(
             thread_id = new_thread_id()
             write(f"New conversation: {thread_id}")
             continue
+        if text.lower() in (PREFS_COMMAND, FORGET_COMMAND):
+            write(preference_command(graph.store, user_id, text.lower()))
+            continue
         try:
-            turn = ask_agent(graph, thread_id, text)
+            turn = ask_agent(graph, thread_id, text, user_id=user_id)
         except Exception as exc:  # keep chatting after one failed turn
             write(f"Request failed: {describe_error(exc)}")
             continue
@@ -513,6 +546,11 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_CHAT_DB,
         help=f"with --chat: SQLite file for conversations (default: {DEFAULT_CHAT_DB})",
     )
+    parser.add_argument(
+        "--user",
+        default=DEFAULT_USER,
+        help=f"with --chat: whose preferences to use (default: {DEFAULT_USER})",
+    )
     args = parser.parse_args(argv)
     if args.question is None and not args.chat:
         parser.error("give a question, or use --chat")
@@ -520,6 +558,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--chat reads its questions from the terminal")
     if args.thread is not None and not args.chat:
         parser.error("--thread is used together with --chat")
+    if args.user != DEFAULT_USER and not args.chat:
+        parser.error("--user is used together with --chat")
 
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
@@ -537,13 +577,25 @@ def main(argv: list[str] | None = None) -> int:
 
     llm = build_llm(settings, temperature=1.0)
     if args.chat:
-        # Saved to a SQLite file, so the conversation survives a restart.
-        with sqlite_checkpointer(args.db) as checkpointer:
-            graph = build_tool_agent_graph(llm, checkpointer=checkpointer)
+        # Conversations (checkpointer) and preferences (Store) live in the same
+        # SQLite file, so both survive a restart. The extractor gets its own
+        # model at temperature 0 and only runs when the gate matches.
+        extractor = make_llm_preference_extractor(build_llm(settings, temperature=0))
+        with (
+            sqlite_checkpointer(args.db) as checkpointer,
+            sqlite_store(args.db) as store,
+        ):
+            graph = build_tool_agent_graph(
+                llm,
+                checkpointer=checkpointer,
+                store=store,
+                preference_extractor=extractor,
+            )
             try:
                 run_agent_chat(
                     graph,
                     thread_id=args.thread,
+                    user_id=args.user,
                     show_steps=args.steps,
                     describe_error=lambda exc: safe_error_message(
                         exc, settings.api_key
