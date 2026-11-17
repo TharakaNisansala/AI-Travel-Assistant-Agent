@@ -91,6 +91,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 
+from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
 from ai_travel_assistant.long_term_memory import (
     PreferenceExtractor,
     clear_preferences,
@@ -247,6 +248,7 @@ def _user_id(runtime: Runtime[AgentContext]) -> str:
 
 def make_llm_node(
     llm_with_tools: BaseChatModel,
+    max_history_tokens: int | None = MAX_HISTORY_TOKENS,
 ) -> Callable[[AgentState], dict]:
     """Build the llm node around a model that already has the tools bound."""
 
@@ -254,7 +256,9 @@ def make_llm_node(
         # The system prompt is added on every call but never stored in the
         # state, so the message history holds only the real conversation.
         prompt = system_prompt_for(state.get("user_prefs", []))
-        messages = [SystemMessage(prompt), *state["messages"]]
+        # Only what the LLM sees is trimmed; the state keeps every message.
+        history = history_for_llm(state["messages"], max_history_tokens)
+        messages = [SystemMessage(prompt), *history]
         response = llm_with_tools.invoke(messages)
         # MessagesState uses the add_messages reducer: returning a list APPENDS
         # it to the history instead of replacing the history.
@@ -306,6 +310,7 @@ def build_tool_agent_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     store: BaseStore | None = None,
     preference_extractor: PreferenceExtractor | None = None,
+    max_history_tokens: int | None = MAX_HISTORY_TOKENS,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -319,11 +324,14 @@ def build_tool_agent_graph(
         START -> load_memory -> llm <-> tools -> save_memory -> END
     load_memory reads the traveller's preferences; save_memory (added only
     with a preference_extractor) stores new ones after the final answer.
+
+    Every LLM call sees the current turn whole, plus earlier turns compacted
+    and trimmed to max_history_tokens (None: send everything).
     """
     llm_with_tools = model.bind_tools(list(tools))
 
     builder = StateGraph(AgentState, context_schema=AgentContext)
-    builder.add_node(LLM, make_llm_node(llm_with_tools))
+    builder.add_node(LLM, make_llm_node(llm_with_tools, max_history_tokens))
     # ToolNode looks at the last AIMessage, runs every tool call in it (several
     # calls run in parallel), and returns one ToolMessage per call.
     builder.add_node(TOOLS_NODE, ToolNode(list(tools)))
