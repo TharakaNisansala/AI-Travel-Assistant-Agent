@@ -101,6 +101,7 @@ from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command, RetryPolicy
 
+from ai_travel_assistant import faults
 from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
 from ai_travel_assistant.long_term_memory import (
     PreferenceExtractor,
@@ -774,6 +775,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--user is used together with --chat")
     if args.no_clarify and not args.chat:
         parser.error("--no-clarify is used together with --chat")
+
+    # Stage 7: refuse a mistyped FAULT_INJECT, and say loudly when one is on.
+    try:
+        fault_warning = faults.describe_active_faults()
+    except faults.FaultConfigError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        return 1
+    if fault_warning:
+        print(fault_warning, file=sys.stderr)
 
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
