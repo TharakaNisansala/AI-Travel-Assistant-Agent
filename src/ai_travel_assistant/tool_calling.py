@@ -130,6 +130,7 @@ from ai_travel_assistant.request_understanding import (
     trip_prompt_note,
     wait_for_reply_node,
 )
+from ai_travel_assistant.robustness import tool_error_message
 from ai_travel_assistant.tools import (
     convert_currency,
     estimate_travel_time,
@@ -395,8 +396,12 @@ def build_tool_agent_graph(
     builder = StateGraph(AgentState, context_schema=AgentContext)
     builder.add_node(LLM, make_llm_node(llm_with_tools, max_history_tokens))
     # ToolNode looks at the last AIMessage, runs every tool call in it (several
-    # calls run in parallel), and returns one ToolMessage per call.
-    builder.add_node(TOOLS_NODE, ToolNode(list(tools)))
+    # calls run in parallel), and returns one ToolMessage per call. Stage 7:
+    # a tool that raises gives an error ToolMessage for THAT call only (the
+    # other calls keep their results), instead of crashing the whole turn.
+    builder.add_node(
+        TOOLS_NODE, ToolNode(list(tools), handle_tool_errors=tool_error_message)
+    )
 
     # tools_condition returns "tools" if the last message has tool_calls,
     # otherwise END ("__end__"). With save_memory, "done" goes there first.
