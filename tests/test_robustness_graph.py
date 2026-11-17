@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 from ai_travel_assistant import tool_calling
@@ -112,5 +112,56 @@ def test_a_failing_tool_leaves_no_orphaned_call(monkeypatch):
         "HumanMessage",
         "AIMessage",
         "ToolMessage",
+        "AIMessage",
+    ]
+
+
+# --- Repairing the history after a failure ------------------------------------
+
+
+def test_a_gemini_failure_after_the_tools_leaves_a_valid_next_turn(tools_ok):
+    from google.genai import errors as genai_errors
+
+    busy = genai_errors.ServerError(503, {"error": {"code": 503, "message": "x"}})
+    model = scripted(tool_step("get_weather_forecast"), "Hello!", fail_on={1: busy})
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+
+    with pytest.raises(genai_errors.ServerError):
+        ask_agent(graph, "t1", "Weather?")
+    turn = ask_agent(graph, "t1", "Hello again")
+
+    assert final_answer(turn) == "Hello!"
+    from ai_travel_assistant.robustness import NO_ANSWER_NOTE
+
+    seen = model.calls[-1]
+    assert kinds(seen) == ["HumanMessage", "AIMessage", "HumanMessage"]
+    assert seen[2].content == NO_ANSWER_NOTE
+
+
+def test_an_orphaned_tool_call_in_the_thread_is_closed_for_the_model():
+    from ai_travel_assistant.robustness import NOT_RUN_RESULT
+
+    model = scripted("Hello!")
+    # Trimming off, so earlier turns are sent whole, orphan included.
+    graph = build_tool_agent_graph(
+        model, checkpointer=InMemorySaver(), max_history_tokens=None
+    )
+    config = {"configurable": {"thread_id": "t1"}}
+    # A thread left by a crash between "call the tool" and "tool answered".
+    graph.update_state(
+        config,
+        {"messages": [HumanMessage("Weather?"), tool_step("get_weather_forecast")]},
+    )
+
+    ask_agent(graph, "t1", "Hello again")
+
+    seen = model.calls[0]
+    assert kinds(seen) == ["HumanMessage", "AIMessage", "ToolMessage", "HumanMessage"]
+    assert seen[3].content == NOT_RUN_RESULT
+    # Only the model's view was repaired; the saved thread is unchanged.
+    assert kinds(saved(graph)) == [
+        "HumanMessage",
+        "AIMessage",
+        "HumanMessage",
         "AIMessage",
     ]
