@@ -339,3 +339,109 @@ def test_without_a_retry_policy_a_failure_reaches_the_caller():
     with pytest.raises(Exception, match="503"):
         ask_agent(graph, "t1", "Hi")
     assert len(model.calls) == 1
+
+
+# --- Stage 6 understanding under failures ---------------------------------------
+
+
+DAILY_QUOTA_TEXT = "Quota exceeded. quotaId: GenerateRequestsPerDayPerProjectPerModel"
+
+
+def understanding_graph(model, understander, **kwargs):
+    return build_tool_agent_graph(
+        model, checkpointer=InMemorySaver(), understander=understander, **kwargs
+    )
+
+
+def test_daily_quota_in_the_understander_ends_the_turn_without_an_agent_call():
+    def out_of_quota(text, **context):
+        raise gemini_error(429, DAILY_QUOTA_TEXT)
+
+    model = scripted("Never.")
+    graph = understanding_graph(model, out_of_quota)
+
+    with pytest.raises(Exception, match="429"):
+        ask_agent(graph, "t1", "Plan me a trip")
+    assert model.calls == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [lambda: gemini_error(503), lambda: gemini_error(429, "Per minute limit")],
+    ids=["503", "per-minute-429"],
+)
+def test_other_understander_errors_still_fall_back_to_the_agent(error):
+    def failing(text, **context):
+        raise error()
+
+    model = scripted("Answer anyway.")
+    turn = ask_agent(understanding_graph(model, failing), "t1", "Plan me a trip")
+
+    assert final_answer(turn) == "Answer anyway."
+    assert len(model.calls) == 1
+
+
+def plan_understander(text, **context):
+    from ai_travel_assistant.schemas import RequestUnderstanding, TripRequest
+
+    answers = {
+        "Plan me a trip": RequestUnderstanding(intent="plan"),
+        "Galle, 2 days": RequestUnderstanding(
+            intent="plan", trip=TripRequest(destination="Galle", days=2)
+        ),
+        "Hello again": RequestUnderstanding(intent="question"),
+    }
+    return answers[text]
+
+
+def test_an_agent_failure_after_a_resume_leaves_the_thread_usable():
+    from ai_travel_assistant.tool_calling import pending_question
+
+    model = scripted("Hello!", fail_on={0: gemini_error(503)})
+    graph = understanding_graph(model, plan_understander)
+
+    ask_agent(graph, "t1", "Plan me a trip")  # pauses with a question
+    with pytest.raises(Exception, match="503"):
+        ask_agent(graph, "t1", "Galle, 2 days")  # resumes, then the agent fails
+
+    assert pending_question(graph, "t1") is None  # not stuck on the question
+    turn = ask_agent(graph, "t1", "Hello again")
+    assert final_answer(turn) == "Hello!"
+    # The trip from the answered question was kept for the next turn.
+    state = graph.get_state({"configurable": {"thread_id": "t1"}}).values
+    assert state["trip_request"]["destination"] == "Galle"
+
+
+def test_a_retry_after_a_resume_does_not_ask_or_understand_again():
+    from ai_travel_assistant.robustness import llm_retry_policy
+
+    calls = []
+
+    def counting(text, **context):
+        calls.append(text)
+        return plan_understander(text, **context)
+
+    model = scripted("Day 1 in Galle ...", fail_on={0: gemini_error(503)})
+    graph = understanding_graph(
+        model, counting, llm_retry=llm_retry_policy(initial_interval=0)
+    )
+
+    ask_agent(graph, "t1", "Plan me a trip")
+    turn = ask_agent(graph, "t1", "Galle, 2 days")
+
+    assert final_answer(turn) == "Day 1 in Galle ..."
+    assert calls == ["Plan me a trip", "Galle, 2 days"]
+    assert len(model.calls) == 2
+
+
+def test_a_failure_on_one_thread_leaves_a_paused_thread_alone():
+    from ai_travel_assistant.tool_calling import pending_question
+
+    model = scripted("Never.", fail_on={0: gemini_error(503)})
+    graph = understanding_graph(model, plan_understander)
+
+    ask_agent(graph, "paused", "Plan me a trip")
+    with pytest.raises(Exception, match="503"):
+        ask_agent(graph, "other", "Galle, 2 days")
+
+    assert pending_question(graph, "paused") is not None
