@@ -408,9 +408,37 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 ### Stage 8: Structured Itinerary Output (2 days)
 - **Learn:** complex nested schemas; separating content generation from rendering.
 - **Concepts:** output contracts make later UIs and APIs trivial (Izzy's frontend can consume the JSON).
-- **Tasks:** `Itinerary` / `DayPlan` / `Activity` schemas; `compose_answer` node; a Markdown renderer; a "modify itinerary" flow.
+- **Tasks:** `Itinerary` / `DayPlan` / `Activity` schemas; `compose_answer` node; a Markdown renderer; a "modify itinerary" flow. As built (`schemas.py`, `itinerary_grounding.py`, `itinerary_output.py`):
+  - **Final-answer tool.** With `build_tool_agent_graph(..., structured_itinerary=True)`, the agent finishes an itinerary by calling `submit_itinerary`, whose arguments are the `ItineraryDraft` schema. Gemini fills the structure in the call that would have written the prose, so there is **no extra call**. The tool is bound to the model but never given to the tools node. The option is off by default, so library callers and `itinerary_check` keep prose plans; `--chat` and one-shot mode turn it on.
+  - **Two schema layers.** `ItineraryDraft`, `DayPlanDraft`, `Activity`, `TravelLeg`, `CostItem` and `PracticalFact` are what the model submits. `Itinerary` and `DayPlan` add the code-filled weather text and the check warnings. Validators enforce `days == len(day_plans)`, day numbers 1..n, a quoted amount on every cost, and a quote on every fact; a malformed `forecast_date` becomes null rather than costing a repair. Nesting is at most 3 levels, and the schema converts to a Gemini function declaration offline (tested).
+  - **`compose_answer` (no LLM).** It validates the draft. If it is invalid, the field errors (paths and messages, never values) go back to the agent **once**. A second failure is **salvaged**: every day, activity and item that validates on its own is kept, and the plan carries a warning. The plan is then grounded and rendered as Markdown with a fixed template. Every submit call gets a result, so no tool call is orphaned. Submitting is checked before the Stage 7 cap; a wrap-up submission is composed without repair.
+  - **Source- and destination-specific grounding.** Each tool result is paired with its own call:
+
+    | Value | Must come from | If it can't be confirmed |
+    |---|---|---|
+    | Sight names and distances | `find_attractions` for this destination, with the distance listed for that sight | Wikivoyage names get no distance; names found nowhere are flagged |
+    | Travel figures | The OSRM call for that pair of places | Set to null and listed |
+    | Prices | Quoted in that currency in this destination's guide, with the other currency from a conversion of that exact amount | Removed and listed |
+    | Weather | This destination's forecast line for the day's `forecast_date`, filled in by the code; never a past date | Left empty |
+    | Facts | A verbatim quote found in their source | Left out |
+
+    Suggestions, descriptions and the summary lose sentences with unconfirmed prices, clock times or schedules. Failed tools are listed in `not_available`, and their failure never removes other tools' results. A `modify` turn reuses earlier results only for the same destination.
+  - **Presentation.** The Markdown has days, weather, travel, activities, costs in LKR and USD, practical information, suggestions marked as unchecked, assumptions, warnings, Not available and the sources used. `state["itinerary"]` keeps the checked plan; `/itinerary` (chat) and `--json` (one-shot) print it as JSON.
 - **Deliverable:** a consistent, well-formatted 3-day Ella itinerary that you can edit with follow-ups.
-- **Tests:** schema validity 100%; day count matches the request; every place named in the itinerary appears in the tool results (grounding check).
+- **Tests:** schema validity 100%; day count matches the request; every place named in the itinerary appears in the tool results (grounding check). As built, all offline (`test_itinerary_schema.py`, `test_itinerary_grounding.py`, `test_itinerary_output.py`, `test_itinerary_graph.py`, and router tests in `test_robustness.py`):
+  - schemas, validators and the Gemini declaration conversion
+  - grounding with results for another destination and another route in the same thread, including reused call ids
+  - repair once, then salvage, then the fixed reply
+  - rendering
+  - graph trajectories with the same number of model calls as a prose plan
+  - a submission at the cap and in the wrap-up
+  - a weather outage through `FAULT_INJECT`
+  - Stage 5: follow-ups see the rendered plan, preferences are saved, the plan survives a restart
+  - Stage 6: clarify, then plan, then modify, grounded in the earlier results
+  - Stage 7: a retry before the submit, a quota error during a repair, a compose crash repaired next turn
+  - the CLI
+
+  **Status: offline complete; live verification deferred** (see the end-of-project checklist below).
 
 ### Stage 9: Evaluation Suite (3 days)
 - **Learn:** evaluating non-deterministic systems; golden datasets; trajectory evaluation; LLM-as-judge.
@@ -425,6 +453,19 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 - **Deliverable:** a v1 release tag.
 
 **Total: about 25–30 working days, roughly 6 weeks at 3 h/day.** Stages 3, 5 and 6 carry the most learning, so budget slack there.
+
+### Deferred live verification (Stages 6–8), at the end of the project
+
+By decision, Stages 6, 7 and 8 were completed and verified offline, and their live Gemini checks are run together at the end. None of them counts as live-verified until then. Run one check at a time, after the daily quota resets (about 13:30 Sri Lanka time), starting with the 1-call `smoke_gemini.py`. Stop at the first 5xx.
+
+1. **Stage 6** (`tests/test_clarification_live.py`): the deliverable ("Plan me a trip" → question → "Galle, 2 days" → plan; about 5 calls), then the 6-prompt routing set (6 calls).
+2. **Stage 7**: one `--chat` itinerary with `$env:FAULT_INJECT = "weather"`. The plan is produced with weather listed as not available, and Gemini accepts a repaired history after an interrupted turn.
+3. **Stage 8**:
+   - "Plan 3 days in Ella" in `--chat`. Gemini calls `submit_itinerary` (not prose) and the plan renders. Also check how often prose is used instead.
+   - A follow-up edit ("make day 2 easier") replaces the plan.
+   - `/itinerary` prints the JSON.
+   - Gemini accepts the nested function declaration.
+4. Record the results and call counts here, then mark each stage as live-verified.
 
 ---
 
