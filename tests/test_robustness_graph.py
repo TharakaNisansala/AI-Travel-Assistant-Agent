@@ -165,3 +165,108 @@ def test_an_orphaned_tool_call_in_the_thread_is_closed_for_the_model():
         "HumanMessage",
         "AIMessage",
     ]
+
+
+# --- The tool-round cap ---------------------------------------------------------
+
+
+def endless_tools(rounds: int, wrap_up="Partial plan from what I found.", **kw):
+    """A model that asks for weather `rounds` times, then gives `wrap_up`."""
+    steps = [tool_step("get_weather_forecast", prefix=f"r{i}-") for i in range(rounds)]
+    return scripted(*steps, wrap_up, **kw)
+
+
+def test_a_model_that_keeps_calling_tools_is_stopped_at_the_cap(tools_ok):
+    from ai_travel_assistant.robustness import (
+        LOOP_CAP_RESULT,
+        MAX_TOOL_ROUNDS,
+        WRAP_UP_INSTRUCTION,
+    )
+
+    model = endless_tools(MAX_TOOL_ROUNDS + 1)
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+
+    turn = ask_agent(graph, "t1", "Weather?")
+
+    assert final_answer(turn) == "Partial plan from what I found."
+    # 4 tool rounds + the 5th request + the wrap-up = 6 model calls.
+    assert len(model.calls) == MAX_TOOL_ROUNDS + 2
+    real = [m for m in turn if isinstance(m, ToolMessage) and m.content == "Forecast."]
+    assert len(real) == MAX_TOOL_ROUNDS
+    # The stopped call has a result, so nothing is orphaned.
+    assert turn[-2].content == LOOP_CAP_RESULT
+    assert kinds(turn)[-3:] == ["AIMessage", "ToolMessage", "AIMessage"]
+    assert WRAP_UP_INSTRUCTION in model.calls[-1][0].content
+
+
+def test_a_failed_wrap_up_gives_the_fixed_reply(tools_ok):
+    from ai_travel_assistant.robustness import FALLBACK_REPLY, MAX_TOOL_ROUNDS
+
+    model = endless_tools(
+        MAX_TOOL_ROUNDS + 1, fail_on={MAX_TOOL_ROUNDS + 1: RuntimeError("503")}
+    )
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+
+    turn = ask_agent(graph, "t1", "Weather?")
+
+    assert final_answer(turn) == FALLBACK_REPLY
+
+
+def test_a_wrap_up_that_asks_for_tools_again_gives_the_fixed_reply(tools_ok):
+    from ai_travel_assistant.robustness import FALLBACK_REPLY, MAX_TOOL_ROUNDS
+
+    model = endless_tools(MAX_TOOL_ROUNDS + 2)  # the wrap-up is one more tool call
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+
+    turn = ask_agent(graph, "t1", "Weather?")
+
+    assert final_answer(turn) == FALLBACK_REPLY
+    assert not turn[-1].tool_calls
+
+
+def test_the_cap_counts_each_turn_separately(tools_ok):
+    model = scripted(
+        *(tool_step("get_weather_forecast", prefix=f"a{i}-") for i in range(3)),
+        "First answer.",
+        *(tool_step("get_weather_forecast", prefix=f"b{i}-") for i in range(3)),
+        "Second answer.",
+    )
+    graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
+
+    ask_agent(graph, "t1", "One")
+    turn = ask_agent(graph, "t1", "Two")
+
+    assert final_answer(turn) == "Second answer."  # 3 rounds each: under the cap
+
+
+def test_the_cap_is_configurable(tools_ok):
+    from ai_travel_assistant.robustness import LOOP_CAP_RESULT
+
+    model = endless_tools(2, wrap_up="Done early.")
+    graph = build_tool_agent_graph(
+        model, checkpointer=InMemorySaver(), max_tool_rounds=1
+    )
+
+    turn = ask_agent(graph, "t1", "Weather?")
+
+    assert final_answer(turn) == "Done early."
+    assert turn[-2].content == LOOP_CAP_RESULT
+
+
+def test_preferences_are_still_saved_after_the_fallback(tools_ok):
+    from langgraph.store.memory import InMemoryStore
+
+    from ai_travel_assistant.long_term_memory import load_preferences
+    from ai_travel_assistant.robustness import MAX_TOOL_ROUNDS
+
+    store = InMemoryStore()
+    graph = build_tool_agent_graph(
+        endless_tools(MAX_TOOL_ROUNDS + 1),
+        checkpointer=InMemorySaver(),
+        store=store,
+        preference_extractor=lambda text, known: ["vegetarian"],
+    )
+
+    ask_agent(graph, "t1", "I'm vegetarian, what is the weather?")
+
+    assert load_preferences(store, "local") == ["vegetarian"]
