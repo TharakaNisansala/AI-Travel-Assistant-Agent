@@ -18,6 +18,8 @@ from ai_travel_assistant.tool_calling import (
     build_tool_agent_graph,
     final_answer,
     run_agent_chat,
+    saved_message_count,
+    sqlite_checkpointer,
 )
 
 
@@ -109,7 +111,8 @@ def test_chat_keeps_context_between_messages():
     run_agent_chat(graph, read, write)
 
     assert texts(model.calls[1])[:2] == ["Plan 2 days.", "Plan: two days."]
-    assert shown[-3:] == ["AI: Plan: two days.", "AI: Day 2 made easier.", "Bye!"]
+    assert shown[-3:-1] == ["AI: Plan: two days.", "AI: Day 2 made easier."]
+    assert shown[-1].startswith("Bye! Reopen this conversation with --thread ")
 
 
 def test_new_command_starts_a_fresh_thread():
@@ -120,7 +123,7 @@ def test_new_command_starts_a_fresh_thread():
     run_agent_chat(graph, read, write)
 
     assert texts(model.calls[1]) == ["Second trip"]
-    assert "Started a new conversation." in shown
+    assert sum(line.startswith("New conversation: ") for line in shown) == 2
 
 
 def test_blank_lines_are_skipped_without_calling_the_model():
@@ -171,3 +174,71 @@ def test_cli_needs_a_question_or_chat():
         tool_calling.main([])
     with pytest.raises(SystemExit):
         tool_calling.main(["Where to hike?", "--chat"])
+
+
+# --- SQLite: conversations survive a restart ----------------------------------
+
+
+def test_sqlite_thread_survives_a_new_graph_and_connection(tmp_path):
+    db = tmp_path / "chat.sqlite"
+    with sqlite_checkpointer(db) as saver:
+        first = build_tool_agent_graph(recording("Plan saved."), checkpointer=saver)
+        ask_agent(first, "trip-1", "Plan Galle.")
+
+    # A "restart": a new connection and a new graph on the same file.
+    model = recording("Day 2 is lighter.")
+    with sqlite_checkpointer(db) as saver:
+        second = build_tool_agent_graph(model, checkpointer=saver)
+        ask_agent(second, "trip-1", "Make day 2 lighter.")
+
+    assert texts(model.calls[0]) == [
+        "Plan Galle.",
+        "Plan saved.",
+        "Make day 2 lighter.",
+    ]
+
+
+def test_sqlite_checkpointer_creates_the_folder(tmp_path):
+    db = tmp_path / "nested" / "chat.sqlite"
+    with sqlite_checkpointer(db) as saver:
+        graph = build_tool_agent_graph(recording("Hi."), checkpointer=saver)
+        ask_agent(graph, "t1", "Hello")
+    assert db.exists()
+
+
+def test_saved_message_count(tmp_path):
+    with sqlite_checkpointer(tmp_path / "chat.sqlite") as saver:
+        graph = build_tool_agent_graph(recording("Hi."), checkpointer=saver)
+        assert saved_message_count(graph, "t1") == 0
+        ask_agent(graph, "t1", "Hello")
+        assert saved_message_count(graph, "t1") == 2
+
+
+def test_chat_continues_a_saved_thread(tmp_path):
+    db = tmp_path / "chat.sqlite"
+    with sqlite_checkpointer(db) as saver:
+        graph = build_tool_agent_graph(recording("Plan saved."), checkpointer=saver)
+        ask_agent(graph, "trip-1", "Plan Galle.")
+
+    model = recording("Updated plan.")
+    read, write, shown = fake_terminal("Add a beach day.", "/quit")
+    with sqlite_checkpointer(db) as saver:
+        graph = build_tool_agent_graph(model, checkpointer=saver)
+        run_agent_chat(graph, read, write, thread_id="trip-1")
+
+    assert shown[0] == "Continuing conversation trip-1 (2 saved messages)."
+    assert texts(model.calls[0])[:2] == ["Plan Galle.", "Plan saved."]
+    assert shown[-1] == "Bye! Reopen this conversation with --thread trip-1"
+
+
+def test_chat_with_an_unknown_thread_starts_it(tmp_path):
+    read, write, shown = fake_terminal("/quit")
+    with sqlite_checkpointer(tmp_path / "chat.sqlite") as saver:
+        graph = build_tool_agent_graph(recording(), checkpointer=saver)
+        run_agent_chat(graph, read, write, thread_id="nope")
+    assert shown[0] == "No saved messages for nope; starting it now."
+
+
+def test_cli_thread_needs_chat():
+    with pytest.raises(SystemExit):
+        tool_calling.main(["Where to hike?", "--thread", "abc"])
