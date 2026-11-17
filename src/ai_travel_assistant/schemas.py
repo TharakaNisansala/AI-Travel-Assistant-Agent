@@ -63,3 +63,26 @@ class TripRequest(BaseModel):
     def missing_critical_fields(self) -> list[str]:
         """Names of the critical fields the traveller has not given yet."""
         return [name for name in CRITICAL_FIELDS if getattr(self, name) is None]
+
+
+# What the traveller's latest message is for. The agent graph routes on this
+# (see request_understanding.route_after_understanding).
+Intent = Literal["plan", "modify", "question", "off_topic"]
+
+
+class RequestUnderstanding(BaseModel):
+    """The intent of one traveller message, plus the trip details it states."""
+
+    intent: Intent = Field(
+        description=(
+            "plan: asks for a trip plan or itinerary. "
+            "modify: asks to change a plan already given. "
+            "question: any other travel question, greeting, or statement about "
+            "the traveller (preferences such as diet or pace). "
+            "off_topic: clearly not about travel, e.g. homework or coding."
+        ),
+    )
+    trip: TripRequest = Field(
+        default_factory=TripRequest,
+        description="Trip details stated in the latest message only.",
+    )

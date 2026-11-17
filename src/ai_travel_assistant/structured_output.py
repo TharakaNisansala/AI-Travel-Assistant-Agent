@@ -46,7 +46,44 @@ Rules:
 - Convert spoken durations to days: "a weekend" = 2, "a week" = 7,
   "a fortnight" = 14, "N nights" = N + 1.
 - "my family of four" means 4 travellers; "we two" or "my partner and I" means 2.
+- For an approximate amount ("around 3 days", "maybe 4"), use that number.
+
+Follow-up replies:
+- The message may start with the question the assistant just asked and the trip
+  details already known, followed by the traveller's latest reply. Extract from
+  the latest reply only; the question and known details are there to help you
+  understand it.
+- Read a short reply as the answer to that question. After "How many days...?",
+  "3", "maybe 4", "five" or "a week" give days. After "Where...?", a place name
+  like "Kandy" gives the destination.
+- A number means days only if the question asked for the trip length or the
+  traveller says it is a duration. "We are 3" is travellers, not days. If the
+  reply does not answer the question, leave the asked-for fields null.
+- Do not copy known details into your answer. Return a known field only if the
+  latest reply changes it ("Actually, make it Galle").
 """
+
+
+def build_extraction_message(
+    text: str,
+    clarification_context: str | None = None,
+    existing_data: dict[str, object] | None = None,
+) -> str:
+    """The user message sent to Gemini: the reply, plus its context if any.
+
+    Without context this is just the traveller's text, exactly as before.
+    """
+    if not clarification_context and not existing_data:
+        return text
+    lines = []
+    if existing_data:
+        known = ", ".join(f"{name}={value}" for name, value in existing_data.items())
+        lines.append(f"Trip details already known: {known}")
+    if clarification_context:
+        lines.append(f"Question the assistant just asked: {clarification_context}")
+    lines.append(f"Traveller's latest reply: {text}")
+    return "\n".join(lines)
+
 
 # Sample prompts with the destination and days we expect. The live test uses
 # these to measure accuracy, and the CLI runs them when you give no text.
@@ -80,15 +117,30 @@ SAMPLE_PROMPTS: list[tuple[str, str | None, int | None]] = [
 FREE_TIER_DELAY_SECONDS = 13.0
 
 
-def extract_trip_request(llm: BaseChatModel, text: str) -> TripRequest:
-    """Turn a traveller's message into a validated TripRequest."""
+def extract_trip_request(
+    llm: BaseChatModel,
+    text: str,
+    *,
+    clarification_context: str | None = None,
+    existing_data: dict[str, object] | None = None,
+) -> TripRequest:
+    """Turn a traveller's message into a validated TripRequest.
+
+    clarification_context is the question the message answers and existing_data
+    the details already known; both help Gemini read short replies like "3".
+    """
     # with_structured_output() wraps the model. The wrapper sends TripRequest's
     # JSON schema to Gemini, which must reply with JSON that matches it. The
     # wrapper then parses that JSON into a TripRequest. If the JSON breaks the
     # schema's rules, it raises an error instead of returning bad data.
     extractor = llm.with_structured_output(TripRequest)
     result = extractor.invoke(
-        [SystemMessage(EXTRACTION_INSTRUCTIONS), HumanMessage(text)]
+        [
+            SystemMessage(EXTRACTION_INSTRUCTIONS),
+            HumanMessage(
+                build_extraction_message(text, clarification_context, existing_data)
+            ),
+        ]
     )
     if not isinstance(result, TripRequest):  # guards against a None reply
         raise ValueError(f"Expected a TripRequest, got {type(result).__name__}")
