@@ -33,6 +33,7 @@ from typing import Any, Literal, get_args
 
 import httpx
 
+from ai_travel_assistant import faults
 from ai_travel_assistant.resilience import TTLCache, send_with_retry
 from ai_travel_assistant.weather_service import USER_AGENT
 
@@ -156,7 +157,8 @@ def make_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
     return httpx.Client(
         timeout=REQUEST_TIMEOUT,
         headers={"User-Agent": USER_AGENT},
-        transport=transport,
+        # Stage 7: fails on purpose only if FAULT_INJECT names guide.
+        transport=transport or faults.transport_for("guide"),
     )
 
 
