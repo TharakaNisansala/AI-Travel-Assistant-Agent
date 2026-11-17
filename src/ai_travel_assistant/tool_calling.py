@@ -130,7 +130,7 @@ from ai_travel_assistant.request_understanding import (
     trip_prompt_note,
     wait_for_reply_node,
 )
-from ai_travel_assistant.robustness import tool_error_message
+from ai_travel_assistant.robustness import repair_history, tool_error_message
 from ai_travel_assistant.tools import (
     convert_currency,
     estimate_travel_time,
@@ -309,7 +309,10 @@ def make_llm_node(
             state.get("missing_fields", []),
         )
         # Only what the LLM sees is trimmed; the state keeps every message.
-        history = history_for_llm(state["messages"], max_history_tokens)
+        # Stage 7: repair_history() then closes tool calls left without a
+        # result by an earlier failure, which the model API would reject.
+        # It builds a new list; the saved thread is never changed.
+        history = repair_history(history_for_llm(state["messages"], max_history_tokens))
         messages = [SystemMessage(prompt), *history]
         response = llm_with_tools.invoke(messages)
         # MessagesState uses the add_messages reducer: returning a list APPENDS
