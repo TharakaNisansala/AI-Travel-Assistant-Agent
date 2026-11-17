@@ -32,6 +32,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
+from ai_travel_assistant.robustness import is_quota_exhausted
 from ai_travel_assistant.schemas import (
     CRITICAL_FIELDS,
     RequestUnderstanding,
@@ -288,7 +289,12 @@ def make_understand_request_node(
 
         try:
             understanding = understander(text, **context)
-        except Exception:  # e.g. a Gemini 429: let the agent answer as before
+        except Exception as exc:
+            # Stage 7: with the DAILY quota used up, the agent's call would
+            # fail too, so end the turn now instead of spending another call.
+            if is_quota_exhausted(exc):
+                raise
+            # Anything else (a 503, a bad reply): the agent answers as before.
             return {**update, "intent": None, "missing_fields": []}
 
         intent = understanding.intent
