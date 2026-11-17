@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
+from ai_travel_assistant import tool_calling
 from ai_travel_assistant.long_term_memory import (
     TravellerPreferences,
     clear_preferences,
@@ -24,12 +25,14 @@ from ai_travel_assistant.long_term_memory import (
     sqlite_store,
 )
 from ai_travel_assistant.tool_calling import (
+    DEFAULT_USER,
     LOAD_MEMORY,
     SAVE_MEMORY,
     SYSTEM_PROMPT,
     ask_agent,
     build_tool_agent_graph,
     final_answer,
+    run_agent_chat,
     system_prompt_for,
 )
 
@@ -275,3 +278,61 @@ def test_store_without_extractor_only_loads():
 
 def test_system_prompt_for_without_preferences_is_unchanged():
     assert system_prompt_for([]) == SYSTEM_PROMPT
+
+
+# --- Chat commands: /prefs, /forget, --user -----------------------------------
+
+
+def fake_terminal(*lines: str):
+    replies = iter(lines)
+    shown: list[str] = []
+    return (lambda prompt: next(replies)), shown.append, shown
+
+
+def test_chat_saves_for_the_given_user_and_lists_with_prefs():
+    store = InMemoryStore()
+    graph = memory_graph(recording("Noted."), FakeExtractor("vegetarian"), store)
+    read, write, shown = fake_terminal("I'm vegetarian.", "/prefs", "/quit")
+
+    run_agent_chat(graph, read, write, user_id="tharaka")
+
+    assert load_preferences(store, "tharaka") == ["vegetarian"]
+    assert load_preferences(store, DEFAULT_USER) == []
+    assert "Saved preferences: vegetarian" in shown
+
+
+def test_prefs_with_nothing_saved():
+    graph = memory_graph(recording(), FakeExtractor())
+    read, write, shown = fake_terminal("/prefs", "/quit")
+
+    run_agent_chat(graph, read, write)
+
+    assert "No saved preferences yet." in shown
+
+
+def test_forget_clears_preferences_without_calling_the_model():
+    store = InMemoryStore()
+    save_preferences(store, "u1", ["vegan", "early riser"])
+    model = recording()
+    graph = memory_graph(model, FakeExtractor(), store)
+    read, write, shown = fake_terminal("/forget", "/quit")
+
+    run_agent_chat(graph, read, write, user_id="u1")
+
+    assert "Forgot 2 saved preferences." in shown
+    assert load_preferences(store, "u1") == []
+    assert model.calls == []
+
+
+def test_prefs_without_a_store_says_memory_is_off():
+    graph = build_tool_agent_graph(recording(), checkpointer=InMemorySaver())
+    read, write, shown = fake_terminal("/prefs", "/quit")
+
+    run_agent_chat(graph, read, write)
+
+    assert "Long-term memory is off for this chat." in shown
+
+
+def test_cli_user_needs_chat():
+    with pytest.raises(SystemExit):
+        tool_calling.main(["Where to hike?", "--user", "someone"])
