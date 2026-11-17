@@ -53,12 +53,17 @@ after every step under a thread_id. ask_agent() sends one message on a thread:
 LangGraph loads that thread's saved history first and the add_messages reducer
 appends the new message, so a follow-up ("make day 2 easier") sees the earlier
 plan. Without a checkpointer every run starts a fresh conversation, as before.
+run_agent_chat() is the terminal loop around ask_agent, with /new for a fresh
+thread (each message makes the usual 2-4 Gemini calls):
+    uv run python -m ai_travel_assistant.tool_calling --chat
+    uv run python -m ai_travel_assistant.tool_calling --chat --steps
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import uuid
 from collections.abc import Callable, Sequence
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -66,6 +71,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemM
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -272,6 +278,58 @@ def describe_steps(messages: Sequence[AnyMessage]) -> list[str]:
     return lines
 
 
+# --- Multi-turn chat ----------------------------------------------------------
+
+NEW_COMMAND = "/new"
+QUIT_COMMANDS = frozenset({"/quit", "/exit"})
+
+
+def new_thread_id() -> str:
+    """A random, unique id for a new conversation."""
+    return uuid.uuid4().hex
+
+
+def run_agent_chat(
+    graph: CompiledStateGraph,
+    read: Callable[[str], str] = input,
+    write: Callable[[str], None] = print,
+    *,
+    show_steps: bool = False,
+    describe_error: Callable[[Exception], str] = lambda exc: type(exc).__name__,
+) -> None:
+    """Chat with the agent in the terminal, one thread at a time.
+
+    The graph must be built with a checkpointer. Every message goes to the
+    current thread, so follow-ups see the earlier turns. /new starts a fresh
+    thread (the old one stays saved), /quit or /exit ends the chat. A failed
+    turn (e.g. a Gemini 503) is reported and the chat goes on.
+
+    read and write default to input() and print(); tests pass fakes. Ctrl+C
+    or end of input (EOFError) is left to the caller.
+    """
+    thread_id = new_thread_id()
+    write(f"Type {NEW_COMMAND} for a new conversation, /quit to stop.")
+    while True:
+        text = read("You: ").strip()
+        if not text:
+            continue
+        if text.lower() in QUIT_COMMANDS:
+            write("Bye!")
+            return
+        if text.lower() == NEW_COMMAND:
+            thread_id = new_thread_id()
+            write("Started a new conversation.")
+            continue
+        try:
+            turn = ask_agent(graph, thread_id, text)
+        except Exception as exc:  # keep chatting after one failed turn
+            write(f"Request failed: {describe_error(exc)}")
+            continue
+        if show_steps:
+            write("\n".join(describe_steps(turn)))
+        write(f"AI: {final_answer(turn)}")
+
+
 # --- CLI ----------------------------------------------------------------------
 
 
@@ -279,11 +337,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Ask the tool-calling travel agent (usually 2 Gemini calls)."
     )
-    parser.add_argument("question", help='e.g. "Find places in Sri Lanka for hiking"')
+    parser.add_argument(
+        "question", nargs="?", help='e.g. "Find places in Sri Lanka for hiking"'
+    )
     parser.add_argument(
         "--steps", action="store_true", help="also print each step of the loop"
     )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="multi-turn chat with memory (each message makes Gemini calls)",
+    )
     args = parser.parse_args(argv)
+    if args.question is None and not args.chat:
+        parser.error("give a question, or use --chat")
+    if args.question is not None and args.chat:
+        parser.error("--chat reads its questions from the terminal")
 
     # Imported here so the offline tests never load the Gemini setup code.
     from ai_travel_assistant.llm_basics import (
@@ -299,7 +368,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
 
-    graph = build_tool_agent_graph(build_llm(settings, temperature=1.0))
+    llm = build_llm(settings, temperature=1.0)
+    if args.chat:
+        # In-memory for now: the conversation ends when the program exits.
+        graph = build_tool_agent_graph(llm, checkpointer=InMemorySaver())
+        try:
+            run_agent_chat(
+                graph,
+                show_steps=args.steps,
+                describe_error=lambda exc: safe_error_message(exc, settings.api_key),
+            )
+        except (KeyboardInterrupt, EOFError):  # Ctrl+C / Ctrl+Z ends the chat
+            print("\nBye!")
+        return 0
+
+    graph = build_tool_agent_graph(llm)
     try:
         messages = run_tool_agent(graph, args.question)
     except Exception as exc:  # show a clean message instead of a traceback
