@@ -70,6 +70,7 @@ import sys
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -81,7 +82,15 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.runtime import Runtime
+from langgraph.store.base import BaseStore
 
+from ai_travel_assistant.long_term_memory import (
+    PreferenceExtractor,
+    load_preferences,
+    looks_like_preference,
+    save_preferences,
+)
 from ai_travel_assistant.tools import (
     convert_currency,
     estimate_travel_time,
@@ -182,24 +191,101 @@ SYSTEM_PROMPT = (
 )
 
 
+# --- State and context ----------------------------------------------------------
+
+# Who is chatting when nobody says: one local traveller on this machine.
+DEFAULT_USER = "local"
+
+# Node names for long-term memory (only added when the graph gets a Store).
+LOAD_MEMORY = "load_memory"
+SAVE_MEMORY = "save_memory"
+
+
+class AgentState(MessagesState):
+    """The messages, plus the traveller's saved preferences for this turn."""
+
+    user_prefs: list[str]
+
+
+@dataclass
+class AgentContext:
+    """Fixed for a whole run, so it is runtime CONTEXT, not state.
+
+    Passed as graph.invoke(..., context=AgentContext(user_id=...)); nodes read
+    it as runtime.context. In a real app this would come from the login.
+    """
+
+    user_id: str = DEFAULT_USER
+
+
+def system_prompt_for(prefs: Sequence[str]) -> str:
+    """SYSTEM_PROMPT, plus the traveller's saved preferences if there are any."""
+    if not prefs:
+        return SYSTEM_PROMPT
+    return (
+        f"{SYSTEM_PROMPT} Known traveller preferences from earlier "
+        f"conversations: {'; '.join(prefs)}. Respect them in every plan, and "
+        "mention briefly when one changes a suggestion."
+    )
+
+
+def _user_id(runtime: Runtime[AgentContext]) -> str:
+    return runtime.context.user_id if runtime.context else DEFAULT_USER
+
+
 # --- Nodes --------------------------------------------------------------------
 
 
 def make_llm_node(
     llm_with_tools: BaseChatModel,
-) -> Callable[[MessagesState], dict]:
+) -> Callable[[AgentState], dict]:
     """Build the llm node around a model that already has the tools bound."""
 
-    def llm_node(state: MessagesState) -> dict:
+    def llm_node(state: AgentState) -> dict:
         # The system prompt is added on every call but never stored in the
         # state, so the message history holds only the real conversation.
-        messages = [SystemMessage(SYSTEM_PROMPT), *state["messages"]]
+        prompt = system_prompt_for(state.get("user_prefs", []))
+        messages = [SystemMessage(prompt), *state["messages"]]
         response = llm_with_tools.invoke(messages)
         # MessagesState uses the add_messages reducer: returning a list APPENDS
         # it to the history instead of replacing the history.
         return {"messages": [response]}
 
     return llm_node
+
+
+def load_memory_node(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
+    """Read the traveller's preferences from the Store (no LLM call)."""
+    return {"user_prefs": load_preferences(runtime.store, _user_id(runtime))}
+
+
+def make_save_memory_node(
+    extractor: PreferenceExtractor,
+) -> Callable[[AgentState, Runtime[AgentContext]], dict]:
+    """Build the node that stores new durable preferences after a turn."""
+
+    def save_memory_node(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
+        from ai_travel_assistant.llm_basics import content_to_text
+
+        last_human = next(
+            (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+            None,
+        )
+        if last_human is None:
+            return {}
+        text = content_to_text(last_human.content)
+        # The gate: most messages are trip requests, and those cost no call.
+        if not looks_like_preference(text):
+            return {}
+        known = state.get("user_prefs", [])
+        try:
+            found = extractor(text, known)
+        except Exception:  # e.g. a Gemini 429: keep the answer, skip saving
+            return {}
+        added = save_preferences(runtime.store, _user_id(runtime), found)
+        return {"user_prefs": [*known, *added]} if added else {}
+
+    return save_memory_node
 
 
 # --- Graph --------------------------------------------------------------------
@@ -209,6 +295,8 @@ def build_tool_agent_graph(
     model: BaseChatModel,
     tools: Sequence[BaseTool] = TOOLS,
     checkpointer: BaseCheckpointSaver | None = None,
+    store: BaseStore | None = None,
+    preference_extractor: PreferenceExtractor | None = None,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -217,24 +305,40 @@ def build_tool_agent_graph(
 
     With a checkpointer, every invoke must name a thread_id (see ask_agent),
     and each thread keeps its own message history between invokes.
+
+    With a store, the graph gets long-term memory:
+        START -> load_memory -> llm <-> tools -> save_memory -> END
+    load_memory reads the traveller's preferences; save_memory (added only
+    with a preference_extractor) stores new ones after the final answer.
     """
     llm_with_tools = model.bind_tools(list(tools))
 
-    builder = StateGraph(MessagesState)
+    builder = StateGraph(AgentState, context_schema=AgentContext)
     builder.add_node(LLM, make_llm_node(llm_with_tools))
     # ToolNode looks at the last AIMessage, runs every tool call in it (several
     # calls run in parallel), and returns one ToolMessage per call.
     builder.add_node(TOOLS_NODE, ToolNode(list(tools)))
 
-    builder.add_edge(START, LLM)
+    if store is None:
+        builder.add_edge(START, LLM)
+    else:
+        builder.add_node(LOAD_MEMORY, load_memory_node)
+        builder.add_edge(START, LOAD_MEMORY)
+        builder.add_edge(LOAD_MEMORY, LLM)
+
     # tools_condition returns "tools" if the last message has tool_calls,
-    # otherwise END ("__end__").
+    # otherwise END ("__end__"). With save_memory, "done" goes there first.
+    after_answer = END
+    if store is not None and preference_extractor is not None:
+        builder.add_node(SAVE_MEMORY, make_save_memory_node(preference_extractor))
+        builder.add_edge(SAVE_MEMORY, END)
+        after_answer = SAVE_MEMORY
     builder.add_conditional_edges(
-        LLM, tools_condition, {TOOLS_NODE: TOOLS_NODE, END: END}
+        LLM, tools_condition, {TOOLS_NODE: TOOLS_NODE, END: after_answer}
     )
     # The loop: after a tool runs, the LLM reads its result and decides again.
     builder.add_edge(TOOLS_NODE, LLM)
-    return builder.compile(checkpointer=checkpointer)
+    return builder.compile(checkpointer=checkpointer, store=store)
 
 
 def run_tool_agent(graph: CompiledStateGraph, question: str) -> list[AnyMessage]:
@@ -243,16 +347,26 @@ def run_tool_agent(graph: CompiledStateGraph, question: str) -> list[AnyMessage]
     return state["messages"]
 
 
-def ask_agent(graph: CompiledStateGraph, thread_id: str, text: str) -> list[AnyMessage]:
+def ask_agent(
+    graph: CompiledStateGraph,
+    thread_id: str,
+    text: str,
+    user_id: str = DEFAULT_USER,
+) -> list[AnyMessage]:
     """Send one message on a thread and return only this turn's messages.
 
     The graph must be built with a checkpointer. The saved history of the
     thread is loaded first, so the LLM sees the earlier turns; the returned
     list starts at the new HumanMessage (tool calls, results, final answer).
+    user_id picks whose long-term preferences are loaded and saved.
     """
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
     before = len(graph.get_state(config).values.get("messages", []))
-    state = graph.invoke({"messages": [HumanMessage(text)]}, config)
+    state = graph.invoke(
+        {"messages": [HumanMessage(text)]},
+        config,
+        context=AgentContext(user_id=user_id),
+    )
     return state["messages"][before:]
 
 
