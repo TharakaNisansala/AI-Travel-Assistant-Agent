@@ -353,8 +353,12 @@ def test_an_openstreetmap_outage_uses_the_guide_for_every_place(monkeypatch, pla
     assert sights.startswith(f"Attractions unavailable for '{place}'")
     assert "FALLBACK: sights named in the Wikivoyage guide" in sights
     assert f"1 {place} Old Temple" in sights
-    # Guide asked twice: once by the model (all), once by the fallback.
-    assert services.asked_about("guide") == [(place, "all"), (place, "see_and_do")]
+    # Guide asked twice: once by the model (all), once by the fallback. The
+    # tools run in parallel, so the two requests may arrive in either order.
+    assert sorted(services.asked_about("guide")) == [
+        (place, "all"),
+        (place, "see_and_do"),
+    ]
 
 
 def test_the_system_prompt_is_identical_for_every_place(monkeypatch):
