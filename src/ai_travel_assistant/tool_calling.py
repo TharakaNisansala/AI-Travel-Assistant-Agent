@@ -97,6 +97,7 @@ import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -114,6 +115,15 @@ from langgraph.types import Command, RetryPolicy
 
 from ai_travel_assistant import faults
 from ai_travel_assistant.context_window import MAX_HISTORY_TOKENS, history_for_llm
+from ai_travel_assistant.itinerary_grounding import SUBMIT_TOOL
+from ai_travel_assistant.itinerary_output import (
+    ITINERARY_RULE,
+    compose_itinerary,
+    has_submit_call,
+    make_compose_node,
+    route_after_compose,
+    submit_itinerary,
+)
 from ai_travel_assistant.long_term_memory import (
     PreferenceExtractor,
     clear_preferences,
@@ -145,6 +155,7 @@ from ai_travel_assistant.request_understanding import (
 from ai_travel_assistant.robustness import (
     FALLBACK_REPLY,
     MAX_TOOL_ROUNDS,
+    TO_COMPOSE,
     TO_DONE,
     TO_FALLBACK,
     TO_TOOLS,
@@ -263,6 +274,8 @@ DEFAULT_USER = "local"
 
 # Stage 7: where a turn goes when it hits the tool-round cap.
 FALLBACK_RESPONSE = "fallback_response"
+# Stage 8: where a submit_itinerary call is checked and rendered (no LLM).
+COMPOSE_ANSWER = "compose_answer"
 
 # Node names for long-term memory (only added when the graph gets a Store).
 LOAD_MEMORY = "load_memory"
@@ -282,6 +295,7 @@ class AgentState(MessagesState):
     missing_fields: list[str]  # critical fields still missing for a plan
     clarification_context: str | None  # the question the latest reply answers
     clarification_rounds: int  # questions asked in a row this turn
+    itinerary: dict  # Stage 8: the last checked itinerary (JSON-ready data)
 
 
 @dataclass
@@ -299,11 +313,13 @@ def system_prompt_for(
     prefs: Sequence[str],
     trip: dict | None = None,
     missing: Sequence[str] = (),
+    structured: bool = False,
 ) -> str:
     """SYSTEM_PROMPT, plus saved preferences and the current trip, if any.
 
     The trip details come from understand_request (Stage 6). Without them the
-    prompt is exactly the Stage 5 one.
+    prompt is exactly the Stage 5 one. structured=True (Stage 8) adds the rule
+    to finish itineraries with submit_itinerary.
     """
     prompt = SYSTEM_PROMPT
     if prefs:
@@ -312,7 +328,8 @@ def system_prompt_for(
             f"conversations: {'; '.join(prefs)}. Respect them in every plan, and "
             "mention briefly when one changes a suggestion."
         )
-    return prompt + trip_prompt_note(trip, missing)
+    prompt += trip_prompt_note(trip, missing)
+    return prompt + ITINERARY_RULE if structured else prompt
 
 
 def _user_id(runtime: Runtime[AgentContext]) -> str:
@@ -325,6 +342,7 @@ def _user_id(runtime: Runtime[AgentContext]) -> str:
 def make_llm_node(
     llm_with_tools: BaseChatModel,
     max_history_tokens: int | None = MAX_HISTORY_TOKENS,
+    structured_itinerary: bool = False,
 ) -> Callable[[AgentState], dict]:
     """Build the llm node around a model that already has the tools bound."""
 
@@ -335,6 +353,7 @@ def make_llm_node(
             state.get("user_prefs", []),
             state.get("trip_request"),
             state.get("missing_fields", []),
+            structured=structured_itinerary,
         )
         # Only what the LLM sees is trimmed; the state keeps every message.
         # Stage 7: repair_history() then closes tool calls left without a
@@ -353,6 +372,8 @@ def make_llm_node(
 def make_fallback_node(
     llm_with_tools: BaseChatModel,
     max_history_tokens: int | None = MAX_HISTORY_TOKENS,
+    structured_itinerary: bool = False,
+    today: Callable[[], date] = date.today,
 ) -> Callable[[AgentState], dict]:
     """Build the node that ends a turn that hit the tool-round cap.
 
@@ -360,6 +381,8 @@ def make_fallback_node(
        left without a result in the saved thread.
     2. One wrap-up LLM call answers from the results gathered so far.
     3. If that call fails, or asks for tools again, a fixed reply is used.
+    Stage 8: a wrap-up that submits an itinerary is checked and rendered by
+    the same compose step (no repair: the turn has no rounds left).
     """
 
     def fallback_node(state: AgentState) -> dict:
@@ -374,6 +397,7 @@ def make_fallback_node(
             state.get("user_prefs", []),
             state.get("trip_request"),
             state.get("missing_fields", []),
+            structured=structured_itinerary,
         )
         history = repair_history(
             history_for_llm([*messages, *closed], max_history_tokens)
@@ -384,6 +408,18 @@ def make_fallback_node(
             )
         except Exception:  # the wrap-up is best effort; never crash the turn
             reply = None
+        if structured_itinerary and has_submit_call(reply):
+            result = compose_itinerary(
+                reply,
+                [*messages, *closed, reply],
+                today=today(),
+                trip_request=state.get("trip_request"),
+                allow_repair=False,
+            )
+            update: dict = {"messages": [*closed, reply, *result.messages]}
+            if result.itinerary is not None:
+                update["itinerary"] = result.itinerary
+            return update
         if not isinstance(reply, AIMessage) or reply.tool_calls or not reply.content:
             reply = AIMessage(FALLBACK_REPLY)
         return {"messages": [*closed, reply]}
@@ -438,6 +474,8 @@ def build_tool_agent_graph(
     understander: RequestUnderstander | None = None,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
     llm_retry: RetryPolicy | None = None,
+    structured_itinerary: bool = False,
+    today: Callable[[], date] = date.today,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -469,16 +507,26 @@ def build_tool_agent_graph(
     robustness.llm_retry_policy()) retries the llm node on transient Gemini
     errors; it is the ONLY retry layer for Gemini, so build the model with
     max_retries=0 when passing it. None: a failed call fails the turn.
+
+    Stage 8, structured_itinerary=True: the model also gets submit_itinerary
+    (the final-answer tool; never run by the tools node). A call to it goes to
+    compose_answer, which validates, grounds and renders the plan without an
+    LLM call; invalid output goes back to the llm once, then is salvaged.
+    today is the clock used to drop past forecast dates (tests fix it).
+    Without it the graph and the prompt are the Stage 7 ones.
     """
     if understander is not None and checkpointer is None:
         raise ValueError("an understander needs a checkpointer to pause and resume")
-    llm_with_tools = model.bind_tools(list(tools))
+    bound = [*tools, submit_itinerary] if structured_itinerary else list(tools)
+    llm_with_tools = model.bind_tools(bound)
 
     builder = StateGraph(AgentState, context_schema=AgentContext)
     # Only the llm node is retried: it just reads the state and calls the
     # model, so running it again is safe. Tools retry inside their services.
     builder.add_node(
-        LLM, make_llm_node(llm_with_tools, max_history_tokens), retry_policy=llm_retry
+        LLM,
+        make_llm_node(llm_with_tools, max_history_tokens, structured_itinerary),
+        retry_policy=llm_retry,
     )
     # ToolNode looks at the last AIMessage, runs every tool call in it (several
     # calls run in parallel), and returns one ToolMessage per call. Stage 7:
@@ -525,12 +573,30 @@ def build_tool_agent_graph(
         builder.add_edge(LOAD_MEMORY, first)
     # Like tools_condition (tool calls -> tools, else done), plus the cap.
     builder.add_node(
-        FALLBACK_RESPONSE, make_fallback_node(llm_with_tools, max_history_tokens)
+        FALLBACK_RESPONSE,
+        make_fallback_node(
+            llm_with_tools, max_history_tokens, structured_itinerary, today
+        ),
     )
+    routes = {
+        TO_TOOLS: TOOLS_NODE,
+        TO_FALLBACK: FALLBACK_RESPONSE,
+        TO_DONE: after_answer,
+    }
+    if structured_itinerary:
+        # The submit call is never run by the tools node: compose_answer checks
+        # it and either answers or sends the field errors back to the llm once.
+        builder.add_node(COMPOSE_ANSWER, make_compose_node(today))
+        builder.add_conditional_edges(
+            COMPOSE_ANSWER, route_after_compose, {"repair": LLM, "done": after_answer}
+        )
+        routes[TO_COMPOSE] = COMPOSE_ANSWER
     builder.add_conditional_edges(
         LLM,
-        make_route_after_agent(max_tool_rounds),
-        {TO_TOOLS: TOOLS_NODE, TO_FALLBACK: FALLBACK_RESPONSE, TO_DONE: after_answer},
+        make_route_after_agent(
+            max_tool_rounds, final_tool=SUBMIT_TOOL if structured_itinerary else None
+        ),
+        routes,
     )
     builder.add_edge(FALLBACK_RESPONSE, after_answer)
     # The loop: after a tool runs, the LLM reads its result and decides again.
