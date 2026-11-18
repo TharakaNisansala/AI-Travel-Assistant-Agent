@@ -133,7 +133,7 @@ def main() -> None:
     st.title("🌴 Sri Lanka travel assistant")
     st.caption(
         "Plans are built from live weather, OpenStreetMap, Wikivoyage and road "
-        "routing, and checked against them. Each message uses Gemini calls."
+        "routing, and checked against them. Each message makes a few LLM calls."
     )
 
     from ai_travel_assistant.llm_basics import ConfigError

@@ -368,3 +368,69 @@ def test_without_a_final_tool_the_router_is_unchanged():
     route = make_route_after_agent()
     messages = [HumanMessage("Plan"), AIMessage("", tool_calls=[submit_call()])]
     assert route({"messages": messages}) == "tools"
+
+
+# --- Groq errors (LLM_PROVIDER=groq) ------------------------------------------------
+
+
+def groq_status_error(code: int, message: str):
+    """A real Groq SDK error, as langchain-groq raises it (has .status_code)."""
+    import groq
+
+    classes = {429: groq.RateLimitError, 400: groq.BadRequestError}
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(code, request=request)
+    error_class = classes.get(code, groq.InternalServerError)
+    return error_class(message, response=response, body=None)
+
+
+def groq_timeout():
+    import groq
+
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return groq.APITimeoutError(request=request)
+
+
+def groq_connection_error():
+    import groq
+
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return groq.APIConnectionError(request=request)
+
+
+GROQ_DAILY = groq_status_error(
+    429,
+    "Rate limit reached for model `m` on requests per day (RPD): Limit 1000",
+)
+GROQ_PER_MINUTE = groq_status_error(
+    429,
+    "Rate limit reached for model `m` on requests per minute (RPM): Limit 30",
+)
+
+
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (GROQ_DAILY, QUOTA_MESSAGE),
+        (GROQ_PER_MINUTE, RATE_LIMIT_MESSAGE),
+        (groq_status_error(503, "Service unavailable"), BUSY_MESSAGE),
+        (groq_timeout(), BUSY_MESSAGE),
+        (groq_connection_error(), BUSY_MESSAGE),
+        (groq_status_error(400, "tool_use_failed"), REJECTED_MESSAGE),
+    ],
+)
+def test_groq_errors_get_the_same_messages(exc, message):
+    assert describe_llm_error(exc) == message
+
+
+@pytest.mark.parametrize(
+    "exc", [groq_status_error(503, "x"), groq_timeout(), groq_connection_error()]
+)
+def test_groq_transient_errors_are_retried(exc):
+    assert is_transient_llm_error(exc)
+
+
+def test_groq_429s_are_not_retried():
+    assert not is_transient_llm_error(GROQ_PER_MINUTE)
+    assert is_quota_exhausted(GROQ_DAILY)
+    assert not is_quota_exhausted(GROQ_PER_MINUTE)

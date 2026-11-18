@@ -97,6 +97,8 @@ copy .env.example .env      # then set GEMINI_API_KEY and GEMINI_MODEL
 
 Get a key from [Google AI Studio](https://aistudio.google.com/). Set `GEMINI_MODEL` to a current Flash model ID. The free tier is small (at the time of writing, about 5 requests a minute and 20 a day), and one itinerary takes about 4–5 requests.
 
+**Using Groq instead.** Set `LLM_PROVIDER=groq` in `.env`, then set `GROQ_API_KEY` (from the [Groq console](https://console.groq.com/keys)) and `GROQ_MODEL` to a current Groq model ID that supports tool use. Every entry point (CLI chat, Streamlit page, Studio, evals) uses whichever provider is set. Switch back with `LLM_PROVIDER=gemini`. `smoke_gemini.py` below always checks Gemini only.
+
 Check the setup with one request:
 
 ```powershell

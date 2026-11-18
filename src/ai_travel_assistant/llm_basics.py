@@ -29,52 +29,86 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 # --- Settings -----------------------------------------------------------------
 
+# Which company's API runs the model. Set LLM_PROVIDER in .env; Gemini is the
+# default, so an .env without it keeps working as before.
+PROVIDERS: dict[str, tuple[str, str]] = {
+    # provider: (API key variable, model ID variable)
+    "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL"),
+    "groq": ("GROQ_API_KEY", "GROQ_MODEL"),
+}
+DEFAULT_PROVIDER = "gemini"
+
 
 class ConfigError(Exception):
-    """Raised when GEMINI_API_KEY or GEMINI_MODEL is missing."""
+    """Raised when LLM_PROVIDER is unknown or its API key or model is missing."""
 
 
 @dataclass(frozen=True)
-class GeminiSettings:
+class LLMSettings:
     model: str
     # repr=False: if this object is ever printed or logged, the key is not shown.
     api_key: str = field(repr=False)
+    provider: str = DEFAULT_PROVIDER
 
 
-def load_settings() -> GeminiSettings:
-    """Read the model ID and API key from the environment (or the .env file)."""
+# The old name, kept so existing code and tests still import it.
+GeminiSettings = LLMSettings
+
+
+def load_settings() -> LLMSettings:
+    """Read the provider, model ID and API key from the environment (or .env)."""
     # load_dotenv() copies values from .env into os.environ. Variables that are
     # already set in your shell take priority over the file.
     load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    model = os.getenv("GEMINI_MODEL", "").strip()
+    provider = os.getenv("LLM_PROVIDER", "").strip().lower() or DEFAULT_PROVIDER
+    if provider not in PROVIDERS:
+        raise ConfigError(
+            f"Unknown LLM_PROVIDER '{provider}'. Use one of: {', '.join(PROVIDERS)}."
+        )
+    key_var, model_var = PROVIDERS[provider]
+    api_key = os.getenv(key_var, "").strip()
+    model = os.getenv(model_var, "").strip()
 
     missing = [
-        name
-        for name, value in (("GEMINI_API_KEY", api_key), ("GEMINI_MODEL", model))
-        if not value
+        name for name, value in ((key_var, api_key), (model_var, model)) if not value
     ]
     if missing:
         raise ConfigError(
-            f"Missing {', '.join(missing)}. Copy .env.example to .env and fill it in."
+            f"Missing {', '.join(missing)} (LLM_PROVIDER={provider}). "
+            "Copy .env.example to .env and fill it in."
         )
-    return GeminiSettings(model=model, api_key=api_key)
+    return LLMSettings(model=model, api_key=api_key, provider=provider)
 
 
 # --- 1. Initializing an LLM ---------------------------------------------------
 
 
 def build_llm(
-    settings: GeminiSettings, temperature: float = 1.0, max_retries: int = 3
+    settings: LLMSettings, temperature: float = 1.0, max_retries: int = 3
 ) -> BaseChatModel:
-    """Create a LangChain chat model that talks to Gemini.
+    """Create a LangChain chat model for the configured provider.
 
     Creating the object does NOT call the API. It only stores the configuration.
     The network request happens later, when we call .invoke().
 
+    Both classes share LangChain's BaseChatModel interface (invoke, stream,
+    bind_tools, with_structured_output), so the rest of the project does not
+    care which provider is behind it.
+
     max_retries=0 turns the client's own retries off, for callers that retry
     in one place themselves (Stage 7: the agent graph's RetryPolicy).
     """
+    if settings.provider == "groq":
+        # Imported here so Gemini-only setups never load the Groq client.
+        from langchain_groq import ChatGroq
+
+        return ChatGroq(
+            model=settings.model,  # a Groq model ID that supports tool use
+            api_key=settings.api_key,
+            temperature=temperature,
+            max_retries=max_retries,
+            timeout=120,
+        )
     return ChatGoogleGenerativeAI(
         model=settings.model,  # which Gemini model to use, e.g. gemini-3.5-flash
         api_key=settings.api_key,  # passed explicitly, never hardcoded
