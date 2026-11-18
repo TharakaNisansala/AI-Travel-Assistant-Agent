@@ -47,8 +47,10 @@ select = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]  # lets tests import root-level scripts like smoke_gemini.py
-# Live tests (real API calls) are skipped by default; run them with: pytest -m live
-addopts = "-ra --strict-markers -m 'not live'"
+# Live tests (real API calls) and the eval sign-off are skipped by default;
+# run them with: pytest -m live   /   pytest -m eval
+addopts = "-ra --strict-markers -m 'not live and not eval'"
 markers = [
     "live: calls real external APIs (deselect with -m 'not live')",
+    "eval: Stage 9 sign-off; scores the latest saved eval run against the targets",
 ]

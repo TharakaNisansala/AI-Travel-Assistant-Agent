@@ -125,11 +125,15 @@ def make_judge_scorer(grade: Grader, threshold: int = PASS_THRESHOLD) -> Scorer:
     return score_judge
 
 
-def make_llm_grader(llm: BaseChatModel) -> Grader:
-    """Wrap a chat model (temperature 0 recommended) as a grader."""
+def make_llm_grader(llm: BaseChatModel, callbacks: list | None = None) -> Grader:
+    """Wrap a chat model (temperature 0 recommended) as a grader.
+
+    callbacks (e.g. the runner's CallPacer) see every judge call, so judging
+    is paced for the free tier like the run itself.
+    """
     structured = llm.with_structured_output(JudgeVerdict)
 
     def grade(prompt: str) -> JudgeVerdict:
-        return structured.invoke(prompt)
+        return structured.invoke(prompt, config={"callbacks": callbacks or []})
 
     return grade
