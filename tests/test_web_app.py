@@ -1,0 +1,129 @@
+"""Stage 10: the Streamlit page, run headless with Streamlit's AppTest (offline).
+
+AppTest executes the script in this process, so the usual fakes apply: the
+streaming scripted model, the fake understander and fixed tool texts. Skipped
+when the optional `ui` extra (streamlit) is not installed.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("streamlit")
+from streamlit.testing.v1 import AppTest  # noqa: E402
+
+from ai_travel_assistant import llm_basics, tool_calling, web_app  # noqa: E402
+from tests.test_clarification import FakeUnderstander  # noqa: E402
+from tests.test_itinerary_graph import (  # noqa: E402
+    TODAY,
+    gather,
+    plan,
+    submit,
+    tools,  # noqa: F401 - pytest fixture
+)
+from tests.test_streaming import ANSWERS, streaming  # noqa: E402
+
+APP = str(Path(web_app.__file__))
+
+
+@pytest.fixture
+def page(monkeypatch, tmp_path):
+    """Returns a function: model -> a started AppTest on a fresh database."""
+    import streamlit as st
+
+    st.cache_resource.clear()
+    settings = llm_basics.GeminiSettings(model="fake-model", api_key="k")
+    monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
+    monkeypatch.setenv(web_app.DB_ENV, str(tmp_path / "chat.sqlite"))
+
+    def start(model):
+        def fake_build(settings, checkpointer, store, **kwargs):
+            return tool_calling.build_tool_agent_graph(
+                model,
+                checkpointer=checkpointer,
+                store=store,
+                understander=FakeUnderstander(ANSWERS),
+                structured_itinerary=True,
+                today=lambda: TODAY,
+            )
+
+        monkeypatch.setattr(tool_calling, "build_chat_graph", fake_build)
+        app = AppTest.from_file(APP, default_timeout=30)
+        app.run()
+        assert not app.exception, app.exception
+        return app
+
+    yield start
+    st.cache_resource.clear()
+
+
+def texts(app) -> list[str]:
+    return [md.value for message in app.chat_message for md in message.markdown]
+
+
+def test_the_empty_page_shows_the_title_and_an_input(page):
+    app = page(streaming())
+    assert app.title[0].value == "🌴 Sri Lanka travel assistant"
+    assert len(app.chat_input) == 1
+    assert app.chat_message == []
+    assert any("Thread" in c.value for c in app.sidebar.caption)
+
+
+@pytest.mark.usefixtures("tools")
+def test_an_itinerary_turn_ends_with_the_plan_and_its_steps(page):
+    app = page(streaming(gather(), submit(plan())))
+    app.chat_input[0].set_value("Plan 2 days in Ella.").run()
+    assert not app.exception, app.exception
+    shown = texts(app)
+    assert shown[0] == "Plan 2 days in Ella."
+    assert shown[-1].startswith("# 2-day trip to Ella")
+    # The steps survive the rerun in an expander.
+    assert any("How the last answer was made" in e.label for e in app.expander)
+    # The sidebar now offers the JSON.
+    assert any('"days": 2' in code.value for code in app.sidebar.code)
+
+
+def test_a_question_waits_for_the_answer(page):
+    app = page(streaming())
+    app.chat_input[0].set_value("Plan me a trip.").run()
+    assert "how many days" in texts(app)[-1]
+    assert any("waiting for your answer" in i.value for i in app.info)
+
+
+def test_a_failed_turn_shows_a_safe_error_and_the_page_survives(page):
+    app = page(streaming(fail_on={0: RuntimeError("secret detail")}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert not app.exception
+    [error] = app.error
+    assert error.value.startswith("Request failed:")
+    assert "secret detail" not in error.value
+
+
+def test_new_conversation_starts_an_empty_thread(page):
+    app = page(streaming("Ella is green."))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert texts(app)
+    first_thread = app.session_state["thread_id"]
+    app.sidebar.button[0].click().run()  # "New conversation"
+    assert app.session_state["thread_id"] != first_thread
+    assert app.chat_message == []
+
+
+def test_a_missing_key_is_reported_on_the_page(monkeypatch, tmp_path):
+    import streamlit as st
+
+    st.cache_resource.clear()
+
+    def no_settings():
+        raise llm_basics.ConfigError("Missing GEMINI_API_KEY.")
+
+    monkeypatch.setattr(llm_basics, "load_settings", no_settings)
+    monkeypatch.setenv(web_app.DB_ENV, str(tmp_path / "chat.sqlite"))
+    app = AppTest.from_file(APP, default_timeout=30)
+    app.run()
+    assert not app.exception
+    assert "Configuration error: Missing GEMINI_API_KEY." in app.error[0].value
+    assert len(app.chat_input) == 0
+    st.cache_resource.clear()
