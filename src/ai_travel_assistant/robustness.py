@@ -122,9 +122,9 @@ def llm_retry_policy(initial_interval: float = LLM_RETRY_WAIT_S) -> RetryPolicy:
 
 # Provider-neutral: the same messages serve Gemini and Groq (LLM_PROVIDER).
 QUOTA_MESSAGE = (
-    "The model's daily free quota is used up. Gemini's resets at midnight US "
-    "Pacific time (about 13:30 in Sri Lanka). Try again then, or switch "
-    "LLM_PROVIDER in .env."
+    "The model's daily free quota is used up. Try again later (Gemini's resets "
+    "at about 13:30 Sri Lanka time; Groq's frees up gradually over the day), "
+    "or switch LLM_PROVIDER in .env."
 )
 RATE_LIMIT_MESSAGE = (
     "The model's rate limit was reached. Please wait a minute and try again."

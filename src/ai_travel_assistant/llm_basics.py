@@ -84,12 +84,15 @@ def load_settings() -> LLMSettings:
 # the one retry layer for 5xx and timeouts, and it never retries a 429.
 #   gemini: 0. A Gemini 429 needs about a minute (per-minute limit) or a day
 #           (daily quota), so an automatic retry only wastes calls.
-#   groq:   3. Groq's usual 429 is the tokens-per-minute limit, which clears in
+#   groq:   6. Groq's usual 429 is the tokens-per-minute limit, which clears in
 #           seconds. The Groq client waits for the server's retry-after header
 #           (up to 60 s) before each retry, so the turn finishes instead of
-#           failing. A 5xx may now be tried more often; Groq allows ~1000
-#           requests a day, so that is affordable.
-AGENT_CLIENT_RETRIES: dict[str, int] = {"gemini": 0, "groq": 3}
+#           failing. On the free tier (8,000 tokens a minute for gpt-oss) one
+#           call sends 4,000-6,000 tokens, so a call can need several waits;
+#           3 retries were not always enough and the web page showed the
+#           rate-limit message. A 5xx may now be tried more often; Groq allows
+#           ~1000 requests a day, so that is affordable.
+AGENT_CLIENT_RETRIES: dict[str, int] = {"gemini": 0, "groq": 6}
 
 
 def agent_client_retries(settings: LLMSettings) -> int:

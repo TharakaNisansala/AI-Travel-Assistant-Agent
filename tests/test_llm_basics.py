@@ -125,4 +125,4 @@ def test_agent_client_retries_per_provider():
     gemini = llm_basics.LLMSettings(model="m", api_key="k")
     groq = llm_basics.LLMSettings(model="m", api_key="k", provider="groq")
     assert llm_basics.agent_client_retries(gemini) == 0
-    assert llm_basics.agent_client_retries(groq) == 3
+    assert llm_basics.agent_client_retries(groq) == 6

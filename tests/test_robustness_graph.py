@@ -491,7 +491,8 @@ def test_chat_on_groq_lets_the_client_wait_out_short_429s(fake_cli, monkeypatch)
 
     # Groq's tokens-per-minute 429 clears in seconds: the client retries it...
     assert fake_cli["build_llm"]
-    assert all(kw.get("max_retries") == 3 for kw in fake_cli["build_llm"])
+    retries = llm_basics.AGENT_CLIENT_RETRIES["groq"]
+    assert all(kw.get("max_retries") == retries for kw in fake_cli["build_llm"])
     # ...while the graph's own retry layer is unchanged.
     policy = fake_cli["graph"].builder.nodes[tool_calling.LLM].retry_policy
     assert policy.max_attempts == 2
