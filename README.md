@@ -99,6 +99,16 @@ Get a key from [Google AI Studio](https://aistudio.google.com/). Set `GEMINI_MOD
 
 **Using Groq instead.** Set `LLM_PROVIDER=groq` in `.env`, then set `GROQ_API_KEY` (from the [Groq console](https://console.groq.com/keys)) and `GROQ_MODEL` to a current Groq model ID that supports tool use. Every entry point (CLI chat, Streamlit page, Studio, evals) uses whichever provider is set. Switch back with `LLM_PROVIDER=gemini`. `smoke_gemini.py` below always checks Gemini only.
 
+**Using Cloudflare Workers AI.** Set `LLM_PROVIDER=cloudflare`, then `CLOUDFLARE_API_TOKEN` (a token with Workers AI permission) and `CLOUDFLARE_ACCOUNT_ID`. `CLOUDFLARE_MODEL` is optional and defaults to `@cf/zai-org/glm-4.7-flash`; another model must support function calling. The agent reaches Workers AI through its OpenAI-compatible endpoint (`/ai/v1/chat/completions`) with `langchain-openai`, so tool calling, structured output and token streaming work as with the other providers.
+
+Known limitations of `glm-4.7-flash` here (seen in live checks on 2026-11-18):
+
+- **Itineraries are less reliable than with Gemini.** In one "Plan 2 days in Kandy" run it passed malformed place names to `estimate_travel_time` (`University_of_Peradeniya`), reached the 4-round tool cap, and its `submit_itinerary` failed validation, so the fallback reply was shown. That run coincided with an Overpass outage. A follow-up edit in the same chat produced a valid, checked itinerary.
+- **Hidden reasoning tokens.** A one-sentence answer used about 540 output tokens and took about 10 s; one full plan used about 45,000 tokens and about 3 minutes. All of it counts toward the Workers AI daily free allowance (neurons).
+- **Occasional slow calls.** One structured-output call hit the 120 s timeout. The agent retries a timeout once, then shows the "busy" message.
+- **Daily allowance message.** When the daily allowance runs out, the chat may show the rate-limit message rather than the daily-quota one (the exact Cloudflare error has not been seen yet).
+- `langchain-openai` may print a harmless Pydantic "serializer warnings" message during structured-output calls.
+
 Check the setup with one request:
 
 ```powershell

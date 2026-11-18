@@ -35,8 +35,18 @@ PROVIDERS: dict[str, tuple[str, str]] = {
     # provider: (API key variable, model ID variable)
     "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL"),
     "groq": ("GROQ_API_KEY", "GROQ_MODEL"),
+    "cloudflare": ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_MODEL"),
 }
 DEFAULT_PROVIDER = "gemini"
+
+# Used when the provider's model variable is empty. Only Cloudflare has one:
+# Gemini and Groq model IDs change often, so those must be set in .env.
+DEFAULT_MODELS: dict[str, str] = {"cloudflare": "@cf/zai-org/glm-4.7-flash"}
+
+# Cloudflare Workers AI also needs the account ID: it is part of the URL.
+ACCOUNT_ID_VAR = "CLOUDFLARE_ACCOUNT_ID"
+# Workers AI's OpenAI-compatible endpoint, so LangChain's ChatOpenAI can use it.
+CLOUDFLARE_BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
 
 
 class ConfigError(Exception):
@@ -49,6 +59,8 @@ class LLMSettings:
     # repr=False: if this object is ever printed or logged, the key is not shown.
     api_key: str = field(repr=False)
     provider: str = DEFAULT_PROVIDER
+    # Only Cloudflare uses it. Not secret, but kept out of logs like the key.
+    account_id: str = field(default="", repr=False)
 
 
 # The old name, kept so existing code and tests still import it.
@@ -67,17 +79,23 @@ def load_settings() -> LLMSettings:
         )
     key_var, model_var = PROVIDERS[provider]
     api_key = os.getenv(key_var, "").strip()
-    model = os.getenv(model_var, "").strip()
+    model = os.getenv(model_var, "").strip() or DEFAULT_MODELS.get(provider, "")
 
-    missing = [
-        name for name, value in ((key_var, api_key), (model_var, model)) if not value
-    ]
+    required = [(key_var, api_key), (model_var, model)]
+    account_id = ""
+    if provider == "cloudflare":
+        account_id = os.getenv(ACCOUNT_ID_VAR, "").strip()
+        required.append((ACCOUNT_ID_VAR, account_id))
+
+    missing = [name for name, value in required if not value]
     if missing:
         raise ConfigError(
             f"Missing {', '.join(missing)} (LLM_PROVIDER={provider}). "
             "Copy .env.example to .env and fill it in."
         )
-    return LLMSettings(model=model, api_key=api_key, provider=provider)
+    return LLMSettings(
+        model=model, api_key=api_key, provider=provider, account_id=account_id
+    )
 
 
 # Client retries for the agent graph, per provider. The graph's RetryPolicy is
@@ -92,7 +110,10 @@ def load_settings() -> LLMSettings:
 #           3 retries were not always enough and the web page showed the
 #           rate-limit message. A 5xx may now be tried more often; Groq allows
 #           ~1000 requests a day, so that is affordable.
-AGENT_CLIENT_RETRIES: dict[str, int] = {"gemini": 0, "groq": 6}
+#   cloudflare: 0. Workers AI's per-minute limits are high for one user, so a
+#           429 there usually means the daily free allowance (neurons) is used
+#           up, which a retry cannot fix.
+AGENT_CLIENT_RETRIES: dict[str, int] = {"gemini": 0, "groq": 6, "cloudflare": 0}
 
 
 def agent_client_retries(settings: LLMSettings) -> int:
@@ -119,6 +140,20 @@ def build_llm(
     max_retries=0 turns the client's own retries off, for callers that retry
     in one place themselves (Stage 7: the agent graph's RetryPolicy).
     """
+    if settings.provider == "cloudflare":
+        # Workers AI speaks the OpenAI chat API, so ChatOpenAI works with its
+        # URL. Tool calling and structured output depend on the model; check
+        # that the chosen @cf/... model supports function calling.
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=settings.model,  # e.g. @cf/zai-org/glm-4.7-flash
+            api_key=settings.api_key,  # a Workers AI API token
+            base_url=CLOUDFLARE_BASE_URL.format(account_id=settings.account_id),
+            temperature=temperature,
+            max_retries=max_retries,
+            timeout=120,
+        )
     if settings.provider == "groq":
         # Imported here so Gemini-only setups never load the Groq client.
         from langchain_groq import ChatGroq

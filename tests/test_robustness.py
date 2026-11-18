@@ -434,3 +434,89 @@ def test_groq_429s_are_not_retried():
     assert not is_transient_llm_error(GROQ_PER_MINUTE)
     assert is_quota_exhausted(GROQ_DAILY)
     assert not is_quota_exhausted(GROQ_PER_MINUTE)
+
+
+# --- Cloudflare Workers AI (LLM_PROVIDER=cloudflare) -------------------------------
+# langchain-openai raises the openai SDK's errors. The account ID is part of the
+# URL, so these fakes put a made-up one there and check it never leaks.
+
+CF_ACCOUNT = "fake-account-id-0001"
+CF_TOKEN = "fake-cf-token-0002"
+CF_URL = (
+    f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/v1/chat/completions"
+)
+
+
+def cloudflare_status_error(code: int, message: str):
+    """A real openai SDK error, as ChatOpenAI raises it for Workers AI."""
+    import openai
+
+    classes = {
+        429: openai.RateLimitError,
+        400: openai.BadRequestError,
+        401: openai.AuthenticationError,
+    }
+    response = httpx.Response(code, request=httpx.Request("POST", CF_URL))
+    error_class = classes.get(code, openai.InternalServerError)
+    return error_class(message, response=response, body=None)
+
+
+def cloudflare_timeout():
+    import openai
+
+    return openai.APITimeoutError(request=httpx.Request("POST", CF_URL))
+
+
+def cloudflare_connection_error():
+    import openai
+
+    return openai.APIConnectionError(request=httpx.Request("POST", CF_URL))
+
+
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (cloudflare_status_error(429, "Too many requests"), RATE_LIMIT_MESSAGE),
+        (cloudflare_status_error(503, "Service unavailable"), BUSY_MESSAGE),
+        (cloudflare_status_error(500, "Internal error"), BUSY_MESSAGE),
+        (cloudflare_timeout(), BUSY_MESSAGE),
+        (cloudflare_connection_error(), BUSY_MESSAGE),
+        (
+            cloudflare_status_error(400, "model does not support tools"),
+            REJECTED_MESSAGE,
+        ),
+        (cloudflare_status_error(401, "Authentication error"), REJECTED_MESSAGE),
+    ],
+)
+def test_cloudflare_errors_get_the_same_messages(exc, message):
+    assert describe_llm_error(exc) == message
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        cloudflare_status_error(503, "x"),
+        cloudflare_timeout(),
+        cloudflare_connection_error(),
+    ],
+)
+def test_cloudflare_transient_errors_are_retried(exc):
+    assert is_transient_llm_error(exc)
+
+
+def test_cloudflare_429_is_not_retried():
+    assert not is_transient_llm_error(cloudflare_status_error(429, "Too many requests"))
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        cloudflare_status_error(401, f"Invalid token {CF_TOKEN} for {CF_URL}"),
+        cloudflare_status_error(503, f"Upstream failed for account {CF_ACCOUNT}"),
+        cloudflare_timeout(),
+    ],
+)
+def test_cloudflare_error_messages_never_show_the_token_or_account(exc):
+    message = describe_llm_error(exc)
+    assert CF_TOKEN not in message
+    assert CF_ACCOUNT not in message
