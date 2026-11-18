@@ -763,6 +763,68 @@ def preference_command(store: BaseStore | None, user_id: str, command: str) -> s
     return "Saved preferences: " + "; ".join(prefs)
 
 
+@dataclass(frozen=True)
+class CommandResult:
+    """What a chat command did: a reply, maybe a new thread, maybe quit."""
+
+    reply: str
+    thread_id: str | None = None  # set when the command started a new thread
+    quit: bool = False
+
+
+def chat_command(
+    graph: CompiledStateGraph, thread_id: str, user_id: str, text: str
+) -> CommandResult | None:
+    """Handle /quit, /new, /prefs, /forget and /itinerary (no LLM call).
+
+    None: the text is not a command and goes to the agent. Shared by the plain
+    chat below and the rich chat (chat_ui.py), so both accept the same commands.
+    """
+    command = text.strip().lower()
+    if command in QUIT_COMMANDS:
+        return CommandResult(
+            f"Bye! Reopen this conversation with --thread {thread_id}", quit=True
+        )
+    if command == NEW_COMMAND:
+        new = new_thread_id()
+        return CommandResult(f"New conversation: {new}", thread_id=new)
+    if command in (PREFS_COMMAND, FORGET_COMMAND):
+        return CommandResult(preference_command(graph.store, user_id, command))
+    if command == ITINERARY_COMMAND:
+        return CommandResult(itinerary_json(graph, thread_id))
+    return None
+
+
+CHAT_HELP = (
+    f"Type {NEW_COMMAND} for a new conversation, {PREFS_COMMAND} or "
+    f"{FORGET_COMMAND} for saved preferences, {ITINERARY_COMMAND} for the "
+    "last itinerary as JSON, /quit to stop."
+)
+
+
+def open_chat(
+    graph: CompiledStateGraph, thread_id: str | None
+) -> tuple[str, list[str]]:
+    """Pick the thread to chat on and the lines to show first (no LLM call)."""
+    lines = []
+    if thread_id is None:
+        thread_id = new_thread_id()
+        lines.append(f"New conversation: {thread_id}")
+    else:
+        count = saved_message_count(graph, thread_id)
+        if count:
+            lines.append(
+                f"Continuing conversation {thread_id} ({count} saved messages)."
+            )
+            question = pending_question(graph, thread_id)
+            if question:
+                lines.append(f"AI (waiting for your answer): {question}")
+        else:
+            lines.append(f"No saved messages for {thread_id}; starting it now.")
+    lines.append(CHAT_HELP)
+    return thread_id, lines
+
+
 def run_agent_chat(
     graph: CompiledStateGraph,
     read: Callable[[str], str] = input,
@@ -792,39 +854,19 @@ def run_agent_chat(
     read and write default to input() and print(); tests pass fakes. Ctrl+C
     or end of input (EOFError) is left to the caller.
     """
-    if thread_id is None:
-        thread_id = new_thread_id()
-        write(f"New conversation: {thread_id}")
-    else:
-        count = saved_message_count(graph, thread_id)
-        if count:
-            write(f"Continuing conversation {thread_id} ({count} saved messages).")
-            question = pending_question(graph, thread_id)
-            if question:
-                write(f"AI (waiting for your answer): {question}")
-        else:
-            write(f"No saved messages for {thread_id}; starting it now.")
-    write(
-        f"Type {NEW_COMMAND} for a new conversation, {PREFS_COMMAND} or "
-        f"{FORGET_COMMAND} for saved preferences, {ITINERARY_COMMAND} for the "
-        "last itinerary as JSON, /quit to stop."
-    )
+    thread_id, lines = open_chat(graph, thread_id)
+    for line in lines:
+        write(line)
     while True:
         text = read("You: ").strip()
         if not text:
             continue
-        if text.lower() in QUIT_COMMANDS:
-            write(f"Bye! Reopen this conversation with --thread {thread_id}")
-            return
-        if text.lower() == NEW_COMMAND:
-            thread_id = new_thread_id()
-            write(f"New conversation: {thread_id}")
-            continue
-        if text.lower() in (PREFS_COMMAND, FORGET_COMMAND):
-            write(preference_command(graph.store, user_id, text.lower()))
-            continue
-        if text.lower() == ITINERARY_COMMAND:
-            write(itinerary_json(graph, thread_id))
+        command = chat_command(graph, thread_id, user_id, text)
+        if command is not None:
+            write(command.reply)
+            if command.quit:
+                return
+            thread_id = command.thread_id or thread_id
             continue
         try:
             turn = ask_agent(graph, thread_id, text, user_id=user_id)
