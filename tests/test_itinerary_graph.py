@@ -616,10 +616,10 @@ def test_json_and_chat_do_not_mix():
 def test_chat_turns_structured_itineraries_on(fake_settings, monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(fake_settings, "build_llm", lambda s, **kw: scripted("Hi."))
+    from ai_travel_assistant import chat_ui
+
     monkeypatch.setattr(
-        tool_calling,
-        "run_agent_chat",
-        lambda graph, **kw: seen.setdefault("graph", graph),
+        chat_ui, "run_rich_chat", lambda graph, **kw: seen.setdefault("graph", graph)
     )
     assert tool_calling.main(["--chat", "--db", str(tmp_path / "chat.sqlite")]) == 0
     assert COMPOSE_ANSWER in seen["graph"].get_graph().nodes
