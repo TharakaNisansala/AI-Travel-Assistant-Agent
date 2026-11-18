@@ -28,6 +28,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from ai_travel_assistant.evals.records import SCENARIO_ID_PATTERN
 from ai_travel_assistant.faults import FaultConfigError, parse_faults
 from ai_travel_assistant.request_understanding import Route
 from ai_travel_assistant.schemas import TripRequest
@@ -148,7 +149,7 @@ class Scenario(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    id: str = Field(pattern=SCENARIO_ID_PATTERN)
     category: Category
     turns: list[str] = Field(min_length=1)
     # A FAULT_INJECT value, e.g. "weather" or "guide:busy" (fault only).
