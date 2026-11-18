@@ -446,6 +446,23 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 - **Tasks:** build a 25–40 scenario dataset (YAML); an evaluation runner (pytest marker `eval`); metrics report; optionally LangSmith datasets and experiments.
 - **Deliverable:** `uv run pytest -m eval` → a scorecard (see §7.3).
 - **Tests:** the evaluation suite *is* the test.
+- **Approved plan (2026-11-18):**
+  - **Run and score are separate.** `scenarios.yaml` → runner (live, spends Gemini calls) → one JSON run record per scenario (messages, tool calls and results, `state["itinerary"]`, call count, time) → scorers (pure, offline) → scorecard. A new or changed scorer re-scores saved runs at no Gemini cost.
+  - **Dataset: 30 scenarios** in `evals/scenarios.yaml`:
+
+    | Category | Count | Gemini calls each (approx.) | Checks |
+    |---|---|---|---|
+    | A. Request understanding | 8 | 1 | Field-level extraction |
+    | B. Clarify / no-clarify / off-topic | 7 | 1 | Route; false-clarify rate |
+    | C. Full itineraries | 8 | 4–5 | Schema, day count, grounding, required tools |
+    | D. Fault injection (`FAULT_INJECT`) | 4 | 4–5 | Crash-free; failed tools in Not available |
+    | E. Multi-turn modify | 3 | 8–10 | Plan replaced and still grounded |
+
+    The 15 first-step tool-selection cases stay in `test_tool_selection.py` and are reused, not copied.
+  - **Scorers:** extraction accuracy, route match (with false-clarify rate), required tools, schema-valid, day count, grounding (reusing `itinerary_grounding`), crash-free, median latency (pacing sleeps excluded), LLM calls per plan, and the rate of `submit_itinerary` over prose. Pass criteria as in §7.3.
+  - **LLM-as-judge:** the scorer and its prompt are built, but it is off by default. `--judge` turns it on, because it costs one more call per plan.
+  - **Offline first:** the scenario schema and loader, run records, scorers, the runner (tested with the scripted fake model), the scorecard and the `eval` marker. `uv run pytest` stays green with no API key.
+  - **Live later:** the full run is about 90 calls, about 5–6 days at 20 a day together with the deferred checks. The runner takes `--category` and `--only`, saves each scenario as it finishes, and skips scenarios already saved, so a run resumes across days.
 
 ### Stage 10: Interface, Polish and Docs (2–3 days)
 - **Learn:** streaming tokens and node updates to the UI; packaging.
