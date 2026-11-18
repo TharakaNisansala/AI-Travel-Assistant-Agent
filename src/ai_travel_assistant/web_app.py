@@ -20,6 +20,7 @@ What this file demonstrates:
 
 from __future__ import annotations
 
+import atexit
 import os
 from contextlib import ExitStack
 from pathlib import Path
@@ -57,13 +58,16 @@ PLACEHOLDER = "Plan 3 days in Ella; I like hiking and scenic places"
 def get_graph(db_path: str) -> CompiledStateGraph:
     """Build the --chat agent once per server process.
 
-    The SQLite connections stay open for the life of the process (the
-    ExitStack is never closed), like the terminal chat's `with` block.
+    The SQLite connections stay open for the life of the process, like the
+    terminal chat's `with` block. atexit holds a reference to the ExitStack:
+    without one it is garbage-collected when this function returns, which
+    closes the context-manager generators and with them the connections.
     """
     from ai_travel_assistant.llm_basics import load_settings
 
     settings = load_settings()  # ConfigError if .env is incomplete
     stack = ExitStack()
+    atexit.register(stack.close)
     checkpointer = stack.enter_context(sqlite_checkpointer(Path(db_path)))
     store = stack.enter_context(sqlite_store(Path(db_path)))
     return build_chat_graph(settings, checkpointer, store)
