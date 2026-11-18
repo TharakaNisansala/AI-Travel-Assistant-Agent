@@ -463,6 +463,16 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
   - **LLM-as-judge:** the scorer and its prompt are built, but it is off by default. `--judge` turns it on, because it costs one more call per plan.
   - **Offline first:** the scenario schema and loader, run records, scorers, the runner (tested with the scripted fake model), the scorecard and the `eval` marker. `uv run pytest` stays green with no API key.
   - **Live later:** the full run is about 90 calls, about 5–6 days at 20 a day together with the deferred checks. The runner takes `--category` and `--only`, saves each scenario as it finishes, and skips scenarios already saved, so a run resumes across days.
+- **As built** (`src/ai_travel_assistant/evals/`: `scenarios.py`, `records.py`, `scorers.py`, `judge.py`, `run.py`, `scorecard.py`; data in `evals/scenarios.yaml`, runs in `evals/runs/<run-id>/`):
+  - **Dataset.** Pydantic validates the YAML when it loads. `CATEGORY_RULES` says which `expect` fields each category must set and may set, and how many turns it has. Unknown fields or tools, a repeated id, and `faults` outside the fault category are load errors. The tools that must fail come from `faults` (`FAULT_TOOLS`). A `null` in `trip` means the field must stay empty.
+  - **Records.** One JSON file per scenario holds the whole thread (`messages_to_dict`) and the state after each turn: route, intent, `trip_request`, question, `itinerary`, message count, LLM calls, and seconds without pacing. An error keeps only its type and a short message. Saves are atomic (`os.replace`), and ids are checked so they cannot escape the folder.
+  - **Scorers.** There are 13 pure scorers. Each returns pass, fail or skip, and ratio metrics also return hits/total. If a plan was expected and there is none, the plan metrics **fail** rather than skip. `structured` checks the **last turn's** `submit_itinerary` call, because `state["itinerary"]` keeps an earlier plan. Grounding uses Stage 8's `place_source()`, now shared with compose.
+  - **Judge.** The judge scores relevance, feasibility and preference match from 1 to 5. The plan is fenced as data. The grader is injected, so the judge is tested offline. It is tracked, never a hard target.
+  - **Runner.** It builds the `--chat` graph with no store, a fresh in-memory thread and cleared service caches for each scenario. `FAULT_INJECT` is set for that scenario only, and one already set in the shell is refused. A `CallPacer` callback counts every chat-model call, keeps calls 13 s apart, and takes the sleeps out of the timings. Understanding and routing stop with `interrupt_before=[llm]`, so each costs 1 call. A Gemini 429 or 5xx stops the run and nothing is saved for that scenario. Any other exception is saved as a crash. `--max-calls` (default 18) only starts a scenario that fits the budget, and `--dry-run` calls nothing. The dry run estimates **about 105 calls** for all 30 scenarios.
+  - **Scorecard.** Ratios divide summed hits by summed totals. Rates leave skips out. Latency is the median of agent turns (early-stopped turns are excluded). Missing scenarios and stray records are listed, and an incomplete run is never a sign-off. It is printed and saved as `scorecard.md`. `--judge` adds the judge.
+  - **Tests (offline):** `test_eval_scenarios.py`, `test_eval_records.py`, `test_eval_scorers.py`, `test_eval_run.py` (runner → records → scorers with the scripted fake model, the fake understander and fixed tool texts) and `test_eval_scorecard.py`. `test_eval_suite.py` is the `eval` sign-off. It skips with no saved run and fails on an incomplete run or a missed target.
+
+  **Status: offline complete; the live eval run is deferred** (see the checklist below).
 
 ### Stage 10: Interface, Polish and Docs (2–3 days)
 - **Learn:** streaming tokens and node updates to the UI; packaging.
@@ -471,9 +481,9 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 
 **Total: about 25–30 working days, roughly 6 weeks at 3 h/day.** Stages 3, 5 and 6 carry the most learning, so budget slack there.
 
-### Deferred live verification (Stages 6–8), at the end of the project
+### Deferred live verification (Stages 6–9), at the end of the project
 
-By decision, Stages 6, 7 and 8 were completed and verified offline, and their live Gemini checks are run together at the end. None of them counts as live-verified until then. Run one check at a time, after the daily quota resets (about 13:30 Sri Lanka time), starting with the 1-call `smoke_gemini.py`. Stop at the first 5xx.
+By decision, Stages 6, 7, 8 and 9 were completed and verified offline, and their live Gemini checks are run together at the end. None of them counts as live-verified until then. Run one check at a time, after the daily quota resets (about 13:30 Sri Lanka time), starting with the 1-call `smoke_gemini.py`. Stop at the first 5xx.
 
 1. **Stage 6** (`tests/test_clarification_live.py`): the deliverable ("Plan me a trip" → question → "Galle, 2 days" → plan; about 5 calls), then the 6-prompt routing set (6 calls).
 2. **Stage 7**: one `--chat` itinerary with `$env:FAULT_INJECT = "weather"`. The plan is produced with weather listed as not available, and Gemini accepts a repaired history after an interrupted turn.
@@ -482,7 +492,13 @@ By decision, Stages 6, 7 and 8 were completed and verified offline, and their li
    - A follow-up edit ("make day 2 easier") replaces the plan.
    - `/itinerary` prints the JSON.
    - Gemini accepts the nested function declaration.
-4. Record the results and call counts here, then mark each stage as live-verified.
+4. **Stage 9**: the eval run, over several days (about 105 calls; 18 a day by default). Several scenarios repeat the checks above (`fault-weather-ella`, `multi-ella-easier-day`, `multi-clarify-then-plan`), so their records count for those checks too.
+   - Check the plan first: `uv run python -m ai_travel_assistant.evals.run --dry-run`.
+   - Day 1: `uv run python -m ai_travel_assistant.evals.run --category understanding --category routing` (15 calls). Note the run id it prints.
+   - Each later day: `uv run python -m ai_travel_assistant.evals.run --run-id <id>`.
+   - When the run is complete, run `uv run python -m ai_travel_assistant.evals.scorecard`, then `uv run pytest -m eval`. Optionally add `--judge` (one call per plan, 15 calls).
+   - Update `ESTIMATED_CALLS` in `run.py` from the real counts in the records.
+5. Record the results and call counts here, then mark each stage as live-verified.
 
 ---
 
