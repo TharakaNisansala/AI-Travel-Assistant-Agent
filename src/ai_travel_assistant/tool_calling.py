@@ -109,6 +109,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
@@ -186,6 +187,9 @@ from ai_travel_assistant.tools import (
     get_weather_forecast,
     search_destinations,
 )
+
+if TYPE_CHECKING:  # only for the annotation; llm_basics loads Gemini code
+    from ai_travel_assistant.llm_basics import GeminiSettings
 
 # The tools this agent may use. bind_tools() sends all of them to the LLM, and
 # ToolNode can run any of them (and only them).
@@ -487,6 +491,7 @@ def build_tool_agent_graph(
     llm_retry: RetryPolicy | None = None,
     structured_itinerary: bool = False,
     today: Callable[[], date] = date.today,
+    persistence_provided: bool = False,
 ) -> CompiledStateGraph:
     """Bind the tools to the model and wire the ReAct loop.
 
@@ -526,7 +531,9 @@ def build_tool_agent_graph(
     today is the clock used to drop past forecast dates (tests fix it).
     Without it the graph and the prompt are the Stage 7 ones.
     """
-    if understander is not None and checkpointer is None:
+    # Stage 10: a server such as LangGraph Studio attaches its own checkpointer
+    # after the graph is built (persistence_provided=True).
+    if understander is not None and checkpointer is None and not persistence_provided:
         raise ValueError("an understander needs a checkpointer to pause and resume")
     bound = [*tools, submit_itinerary] if structured_itinerary else list(tools)
     llm_with_tools = model.bind_tools(bound)
@@ -763,6 +770,68 @@ def preference_command(store: BaseStore | None, user_id: str, command: str) -> s
     return "Saved preferences: " + "; ".join(prefs)
 
 
+@dataclass(frozen=True)
+class CommandResult:
+    """What a chat command did: a reply, maybe a new thread, maybe quit."""
+
+    reply: str
+    thread_id: str | None = None  # set when the command started a new thread
+    quit: bool = False
+
+
+def chat_command(
+    graph: CompiledStateGraph, thread_id: str, user_id: str, text: str
+) -> CommandResult | None:
+    """Handle /quit, /new, /prefs, /forget and /itinerary (no LLM call).
+
+    None: the text is not a command and goes to the agent. Shared by the plain
+    chat below and the rich chat (chat_ui.py), so both accept the same commands.
+    """
+    command = text.strip().lower()
+    if command in QUIT_COMMANDS:
+        return CommandResult(
+            f"Bye! Reopen this conversation with --thread {thread_id}", quit=True
+        )
+    if command == NEW_COMMAND:
+        new = new_thread_id()
+        return CommandResult(f"New conversation: {new}", thread_id=new)
+    if command in (PREFS_COMMAND, FORGET_COMMAND):
+        return CommandResult(preference_command(graph.store, user_id, command))
+    if command == ITINERARY_COMMAND:
+        return CommandResult(itinerary_json(graph, thread_id))
+    return None
+
+
+CHAT_HELP = (
+    f"Type {NEW_COMMAND} for a new conversation, {PREFS_COMMAND} or "
+    f"{FORGET_COMMAND} for saved preferences, {ITINERARY_COMMAND} for the "
+    "last itinerary as JSON, /quit to stop."
+)
+
+
+def open_chat(
+    graph: CompiledStateGraph, thread_id: str | None
+) -> tuple[str, list[str]]:
+    """Pick the thread to chat on and the lines to show first (no LLM call)."""
+    lines = []
+    if thread_id is None:
+        thread_id = new_thread_id()
+        lines.append(f"New conversation: {thread_id}")
+    else:
+        count = saved_message_count(graph, thread_id)
+        if count:
+            lines.append(
+                f"Continuing conversation {thread_id} ({count} saved messages)."
+            )
+            question = pending_question(graph, thread_id)
+            if question:
+                lines.append(f"AI (waiting for your answer): {question}")
+        else:
+            lines.append(f"No saved messages for {thread_id}; starting it now.")
+    lines.append(CHAT_HELP)
+    return thread_id, lines
+
+
 def run_agent_chat(
     graph: CompiledStateGraph,
     read: Callable[[str], str] = input,
@@ -792,39 +861,19 @@ def run_agent_chat(
     read and write default to input() and print(); tests pass fakes. Ctrl+C
     or end of input (EOFError) is left to the caller.
     """
-    if thread_id is None:
-        thread_id = new_thread_id()
-        write(f"New conversation: {thread_id}")
-    else:
-        count = saved_message_count(graph, thread_id)
-        if count:
-            write(f"Continuing conversation {thread_id} ({count} saved messages).")
-            question = pending_question(graph, thread_id)
-            if question:
-                write(f"AI (waiting for your answer): {question}")
-        else:
-            write(f"No saved messages for {thread_id}; starting it now.")
-    write(
-        f"Type {NEW_COMMAND} for a new conversation, {PREFS_COMMAND} or "
-        f"{FORGET_COMMAND} for saved preferences, {ITINERARY_COMMAND} for the "
-        "last itinerary as JSON, /quit to stop."
-    )
+    thread_id, lines = open_chat(graph, thread_id)
+    for line in lines:
+        write(line)
     while True:
         text = read("You: ").strip()
         if not text:
             continue
-        if text.lower() in QUIT_COMMANDS:
-            write(f"Bye! Reopen this conversation with --thread {thread_id}")
-            return
-        if text.lower() == NEW_COMMAND:
-            thread_id = new_thread_id()
-            write(f"New conversation: {thread_id}")
-            continue
-        if text.lower() in (PREFS_COMMAND, FORGET_COMMAND):
-            write(preference_command(graph.store, user_id, text.lower()))
-            continue
-        if text.lower() == ITINERARY_COMMAND:
-            write(itinerary_json(graph, thread_id))
+        command = chat_command(graph, thread_id, user_id, text)
+        if command is not None:
+            write(command.reply)
+            if command.quit:
+                return
+            thread_id = command.thread_id or thread_id
             continue
         try:
             turn = ask_agent(graph, thread_id, text, user_id=user_id)
@@ -834,6 +883,46 @@ def run_agent_chat(
         if show_steps:
             write("\n".join(describe_steps(turn)))
         write(f"AI: {final_answer(turn)}")
+
+
+# --- The chat agent, as every interface builds it ------------------------------
+
+
+def build_chat_graph(
+    settings: GeminiSettings,
+    checkpointer: BaseCheckpointSaver | None,
+    store: BaseStore | None,
+    *,
+    clarify: bool = True,
+    persistence_provided: bool = False,
+) -> CompiledStateGraph:
+    """The full agent of --chat: the CLI, the web page and Studio all use it.
+
+    Stage 7: one retry layer. The client does not retry (max_retries=0); the
+    llm node retries a transient error once (llm_retry), never a 429. The
+    understander and the extractor are not retried: they fall back (to the
+    agent, or to not saving) instead. Both run at temperature 0 and the
+    extractor only when its gate matches. Stage 8: itineraries come back
+    structured, checked and rendered (no extra call).
+
+    persistence_provided: LangGraph Studio attaches its own checkpointer and
+    store to the graph, so it is built without them (see studio.py).
+    """
+    from ai_travel_assistant.llm_basics import build_llm
+
+    llm = build_llm(settings, temperature=1.0, max_retries=0)
+    precise_llm = build_llm(settings, temperature=0, max_retries=0)
+    return build_tool_agent_graph(
+        llm,
+        checkpointer=checkpointer,
+        store=store,
+        preference_extractor=make_llm_preference_extractor(precise_llm),
+        # Stage 6: one extra call per message reads its intent and details.
+        understander=make_llm_request_understander(precise_llm) if clarify else None,
+        llm_retry=llm_retry_policy(),
+        structured_itinerary=True,
+        persistence_provided=persistence_provided,
+    )
 
 
 # --- CLI ----------------------------------------------------------------------
@@ -881,7 +970,18 @@ def main(argv: list[str] | None = None) -> int:
             "questions (saves one Gemini call per message)"
         ),
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="with --chat: plain text, no live progress or streaming (Stage 7 look)",
+    )
     args = parser.parse_args(argv)
+    if args.plain and not args.chat:
+        parser.error("--plain is used together with --chat")
+    if args.steps and args.chat and not args.plain:
+        parser.error(
+            "--chat always shows the steps; --steps is for --plain or one question"
+        )
     if args.question is None and not args.chat:
         parser.error("give a question, or use --chat")
     if args.question is not None and args.chat:
@@ -918,45 +1018,35 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.chat:
-        # Stage 7: one retry layer. The client does not retry (max_retries=0);
-        # the graph's llm node retries a transient error once (llm_retry), and
-        # never a 429. The understander and extractor are not retried: they
-        # fall back (to the agent, or to not saving) instead.
-        llm = build_llm(settings, temperature=1.0, max_retries=0)
         # Conversations (checkpointer) and preferences (Store) live in the same
-        # SQLite file, so both survive a restart. The extractor gets its own
-        # model at temperature 0 and only runs when the gate matches.
-        precise_llm = build_llm(settings, temperature=0, max_retries=0)
-        extractor = make_llm_preference_extractor(precise_llm)
-        # Stage 6: one extra call per message reads its intent and trip
-        # details, at temperature 0 like the other extraction calls.
-        understander = (
-            None if args.no_clarify else make_llm_request_understander(precise_llm)
-        )
+        # SQLite file, so both survive a restart.
         with (
             sqlite_checkpointer(args.db) as checkpointer,
             sqlite_store(args.db) as store,
         ):
-            graph = build_tool_agent_graph(
-                llm,
-                checkpointer=checkpointer,
-                store=store,
-                preference_extractor=extractor,
-                understander=understander,
-                llm_retry=llm_retry_policy(),
-                # Stage 8: itineraries come back structured, checked and
-                # rendered (no extra Gemini call); /itinerary shows the JSON.
-                structured_itinerary=True,
+            graph = build_chat_graph(
+                settings, checkpointer, store, clarify=not args.no_clarify
             )
             try:
-                run_agent_chat(
-                    graph,
-                    thread_id=args.thread,
-                    user_id=args.user,
-                    show_steps=args.steps,
-                    # A short, safe message: never the raw error text.
-                    describe_error=describe_llm_error,
-                )
+                if args.plain:
+                    run_agent_chat(
+                        graph,
+                        thread_id=args.thread,
+                        user_id=args.user,
+                        show_steps=args.steps,
+                        # A short, safe message: never the raw error text.
+                        describe_error=describe_llm_error,
+                    )
+                else:
+                    # Stage 10: live progress and streamed replies.
+                    from ai_travel_assistant.chat_ui import run_rich_chat
+
+                    run_rich_chat(
+                        graph,
+                        thread_id=args.thread,
+                        user_id=args.user,
+                        describe_error=describe_llm_error,
+                    )
             except (KeyboardInterrupt, EOFError):  # Ctrl+C / Ctrl+Z ends the chat
                 print("\nBye!")
         return 0

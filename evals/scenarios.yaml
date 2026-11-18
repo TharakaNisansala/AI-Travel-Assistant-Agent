@@ -1,0 +1,204 @@
+# Stage 9 golden dataset: 30 scenarios (see src/ai_travel_assistant/evals/scenarios.py).
+#
+# Rules for writing a scenario:
+#   - Label only what the message states clearly. If a person could read it
+#     two ways, change the message, not the label.
+#   - `expect` holds properties to check, never an expected answer text.
+#   - trip: a null value means "the traveller did not say this; it must stay empty".
+#   - The 15 first-step tool-selection cases live in tests/test_tool_selection.py.
+#
+# Cost per run (Gemini calls, approx.): understanding and routing 1 each,
+# itinerary and fault 4-5, multi_turn 8-10.
+
+version: 1
+
+scenarios:
+  # --- A. Request understanding (8) ------------------------------------------
+  - id: und-ella-couple-hiking
+    category: understanding
+    turns: ["Plan a 3-day trip to Ella for two people; we love hiking and tea plantations."]
+    expect:
+      trip: {destination: Ella, days: 3, travellers: 2, interests: [hiking, tea]}
+
+  - id: und-kandy-cheap-four
+    category: understanding
+    turns: ["A cheap 2-day trip to Kandy for the four of us."]
+    expect:
+      trip: {destination: Kandy, days: 2, travellers: 4, budget: budget}
+
+  - id: und-galle-luxury-march
+    category: understanding
+    turns: ["I want a luxury 5-day holiday in Galle in March, nice and relaxed."]
+    expect:
+      trip: {destination: Galle, days: 5, budget: luxury, travel_dates: March, pace: relaxed}
+
+  - id: und-sigiriya-solo-packed
+    category: understanding
+    turns: ["I'm travelling alone: 4 days around Sigiriya, and pack in as much as possible."]
+    expect:
+      trip: {destination: Sigiriya, days: 4, travellers: 1, pace: packed}
+
+  - id: und-nuwara-eliya-midrange
+    category: understanding
+    turns: ["We're a couple looking for a mid-range 3-day stay in Nuwara Eliya next weekend."]
+    expect:
+      trip:
+        destination: Nuwara Eliya
+        days: 3
+        travellers: 2
+        budget: mid-range
+        travel_dates: next weekend
+
+  - id: und-trincomalee-week
+    category: understanding
+    turns: ["Plan a 7-day trip to Trincomalee for diving and beaches."]
+    expect:
+      trip: {destination: Trincomalee, days: 7, interests: [diving, beaches]}
+
+  - id: und-mirissa-no-days
+    category: understanding
+    notes: The length is not stated, so days must stay empty (no guessing).
+    turns: ["Plan a trip to Mirissa for whale watching."]
+    expect:
+      trip: {destination: Mirissa, days: null, interests: [whale watching]}
+
+  - id: und-no-destination
+    category: understanding
+    notes: No place is named, so destination must stay empty.
+    turns: ["Can you plan 2 days of temples and history for us?"]
+    expect:
+      trip: {destination: null, days: 2, interests: [temples, history]}
+
+  # --- B. Routing: clarify / agent / off-topic (7) ----------------------------
+  - id: route-clarify-vague
+    category: routing
+    turns: ["Help me plan a holiday."]
+    expect: {route: clarify}
+
+  - id: route-clarify-no-days
+    category: routing
+    turns: ["Make an itinerary for Anuradhapura."]
+    expect: {route: clarify}
+
+  - id: route-agent-full-plan
+    category: routing
+    turns: ["Plan 2 days in Jaffna, focused on food."]
+    expect: {route: agent}
+
+  - id: route-agent-weather-question
+    category: routing
+    notes: A question, not a plan; asking for days here would be a false clarify.
+    turns: ["What's the weather like in Ella tomorrow?"]
+    expect: {route: agent}
+
+  - id: route-agent-distance-question
+    category: routing
+    turns: ["How long does it take to drive from Colombo to Galle?"]
+    expect: {route: agent}
+
+  - id: route-off-topic-joke
+    category: routing
+    turns: ["Tell me a joke about cats."]
+    expect: {route: off_topic}
+
+  - id: route-off-topic-code
+    category: routing
+    turns: ["Fix the bug in my JavaScript code."]
+    expect: {route: off_topic}
+
+  # --- C. Full itineraries (8) ------------------------------------------------
+  - id: itin-ella-3d
+    category: itinerary
+    notes: The v1 deliverable request (PROJECT_PLAN section 8, item 1).
+    turns: ["Plan a 3-day trip to Ella; I like nature, hiking and scenic places."]
+    expect:
+      days: 3
+      destination: Ella
+      # The first-step tools every itinerary needs (SYSTEM_PROMPT); reused below.
+      required_tools: &plan_tools
+        - get_destination_guide
+        - find_attractions
+        - get_weather_forecast
+        - estimate_travel_time
+
+  - id: itin-kandy-2d
+    category: itinerary
+    turns: ["Plan 2 days in Kandy; I like temples and culture."]
+    expect: {days: 2, destination: Kandy, required_tools: *plan_tools}
+
+  - id: itin-galle-from-kandy
+    category: itinerary
+    notes: The start is Kandy, not the default Colombo.
+    turns: ["Plan 2 days in Galle, starting from Kandy."]
+    expect: {days: 2, destination: Galle, required_tools: *plan_tools}
+
+  - id: itin-nuwara-eliya-3d
+    category: itinerary
+    turns: ["Plan 3 days in Nuwara Eliya; I want to see tea estates."]
+    expect: {days: 3, destination: Nuwara Eliya, required_tools: *plan_tools}
+
+  - id: itin-sigiriya-2d
+    category: itinerary
+    turns: ["Plan 2 days in Sigiriya; I want to climb the rock."]
+    expect: {days: 2, destination: Sigiriya, required_tools: *plan_tools}
+
+  - id: itin-mirissa-beach
+    category: itinerary
+    turns: ["Plan a relaxed 3-day beach trip to Mirissa."]
+    expect: {days: 3, destination: Mirissa, required_tools: *plan_tools}
+
+  - id: itin-anuradhapura-history
+    category: itinerary
+    turns: ["Plan 2 days in Anuradhapura for ancient history."]
+    expect: {days: 2, destination: Anuradhapura, required_tools: *plan_tools}
+
+  - id: itin-trincomalee-budget
+    category: itinerary
+    turns: ["Plan a cheap 2-day trip to Trincomalee."]
+    expect: {days: 2, destination: Trincomalee, required_tools: *plan_tools}
+
+  # --- D. Fault injection (4) -------------------------------------------------
+  # The failing tool is still called (its result says "unavailable"), so it
+  # stays in required_tools. The tools that must fail come from `faults`.
+  - id: fault-weather-ella
+    category: fault
+    notes: Also the deferred Stage 7 live check.
+    faults: weather
+    turns: ["Plan 2 days in Ella."]
+    expect: {days: 2, destination: Ella, required_tools: *plan_tools}
+
+  - id: fault-attractions-kandy
+    category: fault
+    faults: attractions
+    turns: ["Plan a 2-day trip to Kandy."]
+    expect: {days: 2, destination: Kandy, required_tools: *plan_tools}
+
+  - id: fault-travel-galle
+    category: fault
+    faults: travel
+    turns: ["Plan 2 days in Galle."]
+    expect: {days: 2, destination: Galle, required_tools: *plan_tools}
+
+  - id: fault-guide-busy-nuwara-eliya
+    category: fault
+    faults: "guide:busy"
+    turns: ["Plan 2 days in Nuwara Eliya."]
+    expect: {days: 2, destination: Nuwara Eliya, required_tools: *plan_tools}
+
+  # --- E. Multi-turn (3) ------------------------------------------------------
+  - id: multi-ella-easier-day
+    category: multi_turn
+    notes: Also the deferred Stage 8 live check (a follow-up edit replaces the plan).
+    turns: ["Plan 3 days in Ella.", "Make day 2 easier."]
+    expect: {routes: [agent, agent], days: 3, destination: Ella, plan_replaced: true}
+
+  - id: multi-clarify-then-plan
+    category: multi_turn
+    notes: The Stage 6 deliverable (PROJECT_PLAN section 8, item 2).
+    turns: ["Plan me a trip.", "Galle, 2 days."]
+    expect: {routes: [clarify, agent], days: 2, destination: Galle}
+
+  - id: multi-kandy-longer
+    category: multi_turn
+    turns: ["Plan 2 days in Kandy.", "Make it 3 days."]
+    expect: {routes: [agent, agent], days: 3, destination: Kandy, plan_replaced: true}

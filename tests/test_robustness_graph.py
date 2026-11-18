@@ -473,6 +473,10 @@ def fake_cli(monkeypatch, tmp_path):
         seen.update(kwargs)
 
     monkeypatch.setattr(tool_calling, "run_agent_chat", fake_chat)
+    # Stage 10: --chat uses the rich chat unless --plain; both are replaced.
+    from ai_travel_assistant import chat_ui
+
+    monkeypatch.setattr(chat_ui, "run_rich_chat", fake_chat)
     seen["db"] = str(tmp_path / "chat.sqlite")
     return seen
 
