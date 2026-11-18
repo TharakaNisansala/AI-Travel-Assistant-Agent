@@ -371,6 +371,23 @@ class _Notes:
             self.not_available.append(text)
 
 
+def place_source(name: str, src: DestinationSources) -> str | None:
+    """The tool result that names this place for src's destination, or None.
+
+    Shared by the compose check (below) and the Stage 9 grounding scorer, so
+    both use one rule for "this place came from a tool".
+    """
+    if normalize(name) in src.osm_sights:
+        return "OpenStreetMap"
+    if contains_phrase(src.wikivoyage_text, name):
+        return "Wikivoyage"
+    if contains_phrase(src.builtin_text, name):
+        return "Built-in guide"
+    if contains_phrase(src.osm_text, name):
+        return "OpenStreetMap"
+    return None
+
+
 def _check_activity(
     activity: Activity, src: DestinationSources, notes: _Notes
 ) -> Activity:
@@ -388,12 +405,9 @@ def _check_activity(
         data["source"], data["distance_km"] = "OpenStreetMap", osm[1]
         return Activity.model_validate(data)
     data["distance_km"] = None  # only OpenStreetMap gives distances
-    if contains_phrase(src.wikivoyage_text, activity.name):
-        data["source"] = "Wikivoyage"
-    elif contains_phrase(src.builtin_text, activity.name):
-        data["source"] = "Built-in guide"
-    elif contains_phrase(src.osm_text, activity.name):
-        data["source"] = "OpenStreetMap"
+    source = place_source(activity.name, src)
+    if source is not None:
+        data["source"] = source
     else:
         notes.warn(
             f"{activity.name}: not found in the tool results for {src.destination}; "
