@@ -478,6 +478,14 @@ Estimates assume about 3 focused hours a day. **Rule: a stage is done only when 
 - **Learn:** streaming tokens and node updates to the UI; packaging.
 - **Tasks:** a polished `rich` CLI with streaming and progress ("🔎 checking weather…"); README with an architecture diagram; optionally a Streamlit UI; a demo recording.
 - **Deliverable:** a v1 release tag.
+- **Approved plan (2026-11-18):**
+  1. `streaming.py`: `graph.stream(stream_mode=["updates", "messages"])` becomes typed UI events: progress per node and per tool call, agent tokens, the clarification question and the finished turn. Interrupts are handled. It is tested offline with the scripted fake model. The CLI and the web page both use these events.
+  2. A `rich` chat for `--chat`, with a spinner and step lines, streamed tokens and the itinerary in a Markdown panel. `--plain` keeps the old output.
+  3. `langgraph.json` and a graph factory for LangGraph Studio (`langgraph dev`). Studio supplies its own persistence.
+  4. `README.md`: setup, commands, an architecture diagram made with `draw_mermaid()` (a test keeps it in sync with the graph), testing and eval, and limitations.
+  5. A Streamlit chat page as an optional extra (`uv run --extra ui streamlit run ...`), using the same events.
+  6. Demo recording and the `v1` tag come after the live checks.
+  - LangSmith tracing stays off unless `LANGSMITH_TRACING` is set (README).
 
 **Total: about 25–30 working days, roughly 6 weeks at 3 h/day.** Stages 3, 5 and 6 carry the most learning, so budget slack there.
 
