@@ -21,3 +21,6 @@ htmlcov/
 
 # Local chat history (SQLite checkpoints)
 .data/
+
+# LangGraph Studio dev server state (langgraph dev)
+.langgraph_api/
