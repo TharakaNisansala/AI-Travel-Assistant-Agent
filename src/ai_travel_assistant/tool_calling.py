@@ -898,8 +898,9 @@ def build_chat_graph(
 ) -> CompiledStateGraph:
     """The full agent of --chat: the CLI, the web page and Studio all use it.
 
-    Stage 7: one retry layer. The client does not retry (max_retries=0); the
-    llm node retries a transient error once (llm_retry), never a 429. The
+    Stage 7: one retry layer. The llm node retries a transient error once
+    (llm_retry), never a 429. The client does not retry on Gemini; on Groq it
+    waits out short tokens-per-minute 429s (see agent_client_retries). The
     understander and the extractor are not retried: they fall back (to the
     agent, or to not saving) instead. Both run at temperature 0 and the
     extractor only when its gate matches. Stage 8: itineraries come back
@@ -908,10 +909,11 @@ def build_chat_graph(
     persistence_provided: LangGraph Studio attaches its own checkpointer and
     store to the graph, so it is built without them (see studio.py).
     """
-    from ai_travel_assistant.llm_basics import build_llm
+    from ai_travel_assistant.llm_basics import agent_client_retries, build_llm
 
-    llm = build_llm(settings, temperature=1.0, max_retries=0)
-    precise_llm = build_llm(settings, temperature=0, max_retries=0)
+    retries = agent_client_retries(settings)
+    llm = build_llm(settings, temperature=1.0, max_retries=retries)
+    precise_llm = build_llm(settings, temperature=0, max_retries=retries)
     return build_tool_agent_graph(
         llm,
         checkpointer=checkpointer,

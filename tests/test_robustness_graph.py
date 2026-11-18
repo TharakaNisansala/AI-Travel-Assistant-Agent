@@ -481,6 +481,22 @@ def fake_cli(monkeypatch, tmp_path):
     return seen
 
 
+def test_chat_on_groq_lets_the_client_wait_out_short_429s(fake_cli, monkeypatch):
+    from ai_travel_assistant import llm_basics
+
+    groq = llm_basics.LLMSettings(model="fake-model", api_key=FAKE_KEY, provider="groq")
+    monkeypatch.setattr(llm_basics, "load_settings", lambda: groq)
+
+    assert tool_calling.main(["--chat", "--db", fake_cli["db"]]) == 0
+
+    # Groq's tokens-per-minute 429 clears in seconds: the client retries it...
+    assert fake_cli["build_llm"]
+    assert all(kw.get("max_retries") == 3 for kw in fake_cli["build_llm"])
+    # ...while the graph's own retry layer is unchanged.
+    policy = fake_cli["graph"].builder.nodes[tool_calling.LLM].retry_policy
+    assert policy.max_attempts == 2
+
+
 def test_chat_uses_one_retry_layer(fake_cli):
     from ai_travel_assistant.robustness import (
         describe_llm_error,
@@ -489,7 +505,7 @@ def test_chat_uses_one_retry_layer(fake_cli):
 
     assert tool_calling.main(["--chat", "--db", fake_cli["db"]]) == 0
 
-    # Every chat model is built without client retries...
+    # On Gemini, every chat model is built without client retries...
     assert fake_cli["build_llm"]
     assert all(kw.get("max_retries") == 0 for kw in fake_cli["build_llm"])
     # ...and the graph's llm node retries transient errors once.

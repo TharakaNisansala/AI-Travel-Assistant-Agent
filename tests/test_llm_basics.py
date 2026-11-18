@@ -119,3 +119,10 @@ def test_build_llm_makes_a_groq_model_without_calling_api():
     assert isinstance(llm, ChatGroq)
     assert llm.model_name == "some-groq-model"
     assert (llm.temperature, llm.max_retries) == (0.2, 0)
+
+
+def test_agent_client_retries_per_provider():
+    gemini = llm_basics.LLMSettings(model="m", api_key="k")
+    groq = llm_basics.LLMSettings(model="m", api_key="k", provider="groq")
+    assert llm_basics.agent_client_retries(gemini) == 0
+    assert llm_basics.agent_client_retries(groq) == 3

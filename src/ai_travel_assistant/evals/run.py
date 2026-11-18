@@ -380,7 +380,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # Imported here so the offline tests never load the Gemini setup code.
-    from ai_travel_assistant.llm_basics import ConfigError, build_llm, load_settings
+    from ai_travel_assistant.llm_basics import (
+        ConfigError,
+        agent_client_retries,
+        build_llm,
+        load_settings,
+    )
     from ai_travel_assistant.request_understanding import (
         make_llm_request_understander,
     )
@@ -392,10 +397,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
     # The same models and retry layer as --chat (see tool_calling.main).
+    retries = agent_client_retries(settings)
     agent = Agent(
-        model=build_llm(settings, temperature=1.0, max_retries=0),
+        model=build_llm(settings, temperature=1.0, max_retries=retries),
         understander=make_llm_request_understander(
-            build_llm(settings, temperature=0, max_retries=0)
+            build_llm(settings, temperature=0, max_retries=retries)
         ),
         model_name=settings.model,
         llm_retry=llm_retry_policy(),

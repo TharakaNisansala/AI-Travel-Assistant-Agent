@@ -80,6 +80,24 @@ def load_settings() -> LLMSettings:
     return LLMSettings(model=model, api_key=api_key, provider=provider)
 
 
+# Client retries for the agent graph, per provider. The graph's RetryPolicy is
+# the one retry layer for 5xx and timeouts, and it never retries a 429.
+#   gemini: 0. A Gemini 429 needs about a minute (per-minute limit) or a day
+#           (daily quota), so an automatic retry only wastes calls.
+#   groq:   3. Groq's usual 429 is the tokens-per-minute limit, which clears in
+#           seconds. The Groq client waits for the server's retry-after header
+#           (up to 60 s) before each retry, so the turn finishes instead of
+#           failing. A 5xx may now be tried more often; Groq allows ~1000
+#           requests a day, so that is affordable.
+AGENT_CLIENT_RETRIES: dict[str, int] = {"gemini": 0, "groq": 3}
+
+
+def agent_client_retries(settings: LLMSettings) -> int:
+    """max_retries for build_llm() when the agent graph's RetryPolicy is used."""
+    provider = getattr(settings, "provider", DEFAULT_PROVIDER)
+    return AGENT_CLIENT_RETRIES.get(provider, 0)
+
+
 # --- 1. Initializing an LLM ---------------------------------------------------
 
 
