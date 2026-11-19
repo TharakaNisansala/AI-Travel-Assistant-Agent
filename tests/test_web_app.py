@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
-from ai_travel_assistant import llm_basics, tool_calling, web_app  # noqa: E402
+from ai_travel_assistant import llm_basics, tool_calling, web_app, web_ui  # noqa: E402
 from tests.test_clarification import FakeUnderstander  # noqa: E402
 from tests.test_itinerary_graph import (  # noqa: E402
     TODAY,
@@ -63,12 +63,34 @@ def texts(app) -> list[str]:
     return [md.value for message in app.chat_message for md in message.markdown]
 
 
+def suggestion_buttons(app) -> list:
+    return [b for b in app.button if (b.key or "").startswith("suggest-")]
+
+
 def test_the_empty_page_shows_the_title_and_an_input(page):
     app = page(streaming())
-    assert app.title[0].value == "🌴 Sri Lanka travel assistant"
+    assert any(web_ui.APP_NAME in md.value for md in app.markdown)
     assert len(app.chat_input) == 1
     assert app.chat_message == []
     assert any("Thread" in c.value for c in app.sidebar.caption)
+    # The empty conversation offers starter suggestions.
+    assert len(suggestion_buttons(app)) == len(web_ui.SUGGESTIONS)
+
+
+def test_the_header_names_the_provider_and_model(page):
+    app = page(streaming())
+    assert any("Gemini · fake-model" in md.value for md in app.markdown)
+
+
+def test_a_suggestion_sends_its_message(page):
+    app = page(streaming("Kandy is lovely."))
+    suggestion_buttons(app)[0].click().run()
+    assert not app.exception, app.exception
+    shown = texts(app)
+    assert shown[0] == web_ui.SUGGESTIONS[0][2]
+    assert shown[-1] == "Kandy is lovely."
+    # Suggestions are only for an empty conversation.
+    assert suggestion_buttons(app) == []
 
 
 @pytest.mark.usefixtures("tools")
@@ -78,10 +100,26 @@ def test_an_itinerary_turn_ends_with_the_plan_and_its_steps(page):
     assert not app.exception, app.exception
     shown = texts(app)
     assert shown[0] == "Plan 2 days in Ella."
-    assert shown[-1].startswith("# 2-day trip to Ella")
+    assert shown[-1].startswith("# 2-day trip to Ella")  # the plain-text version
+    # The plan is drawn as cards: one tab per day.
+    assert [tab.label for tab in app.tabs] == ["Day 1 · Day 1", "Day 2 · Day 2"]
+    assert any("2-day trip to Ella" in md.value for md in app.markdown)
     # The steps survive the rerun in an expander.
     assert any("How the last answer was made" in e.label for e in app.expander)
-    # The sidebar now offers the JSON.
+    # Travellers get the plan as a PDF, in the chat and in the sidebar; the
+    # raw JSON is a developer view only.
+    keys = [d.key for d in app.get("download_button")]
+    assert len(keys) == 2 and "pdf-sidebar" in keys
+    assert all(key.startswith("pdf-") for key in keys)
+    assert app.sidebar.code == []
+
+
+@pytest.mark.usefixtures("tools")
+def test_dev_mode_shows_the_itinerary_json(page, monkeypatch):
+    monkeypatch.setenv(web_app.DEV_ENV, "1")
+    app = page(streaming(gather(), submit(plan())))
+    app.chat_input[0].set_value("Plan 2 days in Ella.").run()
+    assert not app.exception, app.exception
     assert any('"days": 2' in code.value for code in app.sidebar.code)
 
 

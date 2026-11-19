@@ -16,6 +16,10 @@ What this file demonstrates:
   3. Shared persistence. Conversations and preferences use the same SQLite
      file as `--chat`, so a thread started here can be continued in the
      terminal with --thread, and the other way round.
+  4. Structured output pays off in the UI: the latest itinerary is drawn as
+     day cards from state["itinerary"] (see web_ui.py), not from its Markdown,
+     and the same data becomes the downloadable PDF (itinerary_pdf.py).
+     Set TRAVEL_DEV=1 to also see the raw itinerary JSON in the sidebar.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from pathlib import Path
 import streamlit as st
 from langgraph.graph.state import CompiledStateGraph
 
+from ai_travel_assistant import web_ui
 from ai_travel_assistant.long_term_memory import sqlite_store
 from ai_travel_assistant.streaming import (
     Step,
@@ -51,6 +56,7 @@ from ai_travel_assistant.tool_calling import (
 )
 
 DB_ENV = "TRAVEL_CHAT_DB"  # another SQLite file, e.g. for a demo or a test
+DEV_ENV = "TRAVEL_DEV"  # "1" shows developer-only views (the itinerary JSON)
 PLACEHOLDER = "Plan 3 days in Ella; I like hiking and scenic places"
 
 
@@ -73,14 +79,46 @@ def get_graph(db_path: str) -> CompiledStateGraph:
     return build_chat_graph(settings, checkpointer, store)
 
 
+def dev_mode() -> bool:
+    """Developer views on? Off by default, so travellers see only the PDF."""
+    return os.environ.get(DEV_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
 def _thread_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
+
+
+def model_label() -> str | None:
+    """'Cloudflare · glm-4.7-flash' for the header badge (no secrets)."""
+    from ai_travel_assistant.llm_basics import ConfigError, load_settings
+
+    try:
+        settings = load_settings()
+    except ConfigError:
+        return None
+    short = settings.model.rsplit("/", 1)[-1]
+    return f"{settings.provider.capitalize()} · {short}"
+
+
+def itinerary_markdown(itinerary: dict | None) -> str | None:
+    """The Markdown the agent showed for this itinerary, to find its message."""
+    if not itinerary:
+        return None
+    from pydantic import ValidationError
+
+    from ai_travel_assistant.itinerary_output import render_itinerary_markdown
+    from ai_travel_assistant.schemas import Itinerary
+
+    try:
+        return render_itinerary_markdown(Itinerary.model_validate(itinerary)).strip()
+    except ValidationError:
+        return None
 
 
 def render_turn(graph: CompiledStateGraph, thread_id: str, text: str, user_id: str):
     """Stream one turn into an assistant message; return its steps."""
     steps: list[str] = []
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=web_ui.ASSISTANT_AVATAR):
         status = st.status("Thinking…", expanded=False)
         reply = st.empty()
         typed = ""
@@ -105,36 +143,57 @@ def sidebar(graph: CompiledStateGraph) -> str:
     """Conversation controls; returns the traveller's user id."""
     state = st.session_state
     with st.sidebar:
-        st.header("Conversation")
-        user_id = st.text_input("Traveller", value=DEFAULT_USER) or DEFAULT_USER
-        if st.button("New conversation", use_container_width=True):
-            state.thread_id = new_thread_id()
-            state.last_steps = []
-        st.caption(f"Thread `{state.thread_id}`")
-        st.caption("Continue it in the terminal with `--chat --thread <id>`.")
+        st.markdown(f"## {web_ui.ASSISTANT_AVATAR} {web_ui.APP_NAME}")
+        with st.container(border=True):
+            st.markdown("### 💬 Conversation")
+            user_id = st.text_input("Traveller", value=DEFAULT_USER) or DEFAULT_USER
+            if st.button("✨ New conversation", use_container_width=True):
+                state.thread_id = new_thread_id()
+                state.last_steps = []
+            st.caption(f"Thread `{state.thread_id}`")
+            st.caption("Continue it in the terminal with `--chat --thread <id>`.")
 
-        st.header("Itinerary")
-        plan = itinerary_json(graph, state.thread_id)
-        if plan == NO_ITINERARY:
-            st.caption(plan)
-        else:
-            with st.expander("Last itinerary as JSON"):
-                st.code(plan, language="json")
+        with st.container(border=True):
+            st.markdown("### 🗺️ Itinerary")
+            itinerary = graph.get_state(_thread_config(state.thread_id)).values.get(
+                "itinerary"
+            )
+            if not itinerary:
+                st.caption(NO_ITINERARY)
+            else:
+                web_ui.pdf_download_button(itinerary, key="pdf-sidebar")
+                if dev_mode():  # raw data for debugging, hidden from travellers
+                    with st.expander("Last itinerary as JSON (dev)"):
+                        st.code(itinerary_json(graph, state.thread_id), language="json")
 
-        st.header("Saved preferences")
-        st.caption(preference_command(graph.store, user_id, PREFS_COMMAND))
-        if st.button("Forget my preferences", use_container_width=True):
-            st.toast(preference_command(graph.store, user_id, FORGET_COMMAND))
+        with st.container(border=True):
+            st.markdown("### ⭐ Saved preferences")
+            st.caption(preference_command(graph.store, user_id, PREFS_COMMAND))
+            if st.button("Forget my preferences", use_container_width=True):
+                st.toast(preference_command(graph.store, user_id, FORGET_COMMAND))
     return user_id
 
 
+def suggestions() -> str | None:
+    """Starter cards for an empty conversation; returns a clicked prompt."""
+    st.markdown("#### Where shall we go?")
+    picked = None
+    for row in range(0, len(web_ui.SUGGESTIONS), 2):
+        for column, (title, subtitle, prompt) in zip(
+            st.columns(2), web_ui.SUGGESTIONS[row : row + 2], strict=False
+        ):
+            label = f"**{title}**  \n{subtitle}"
+            if column.button(label, key=f"suggest-{title}", use_container_width=True):
+                picked = prompt
+    return picked
+
+
 def main() -> None:
-    st.set_page_config(page_title="Sri Lanka travel assistant", page_icon="🌴")
-    st.title("🌴 Sri Lanka travel assistant")
-    st.caption(
-        "Plans are built from live weather, OpenStreetMap, Wikivoyage and road "
-        "routing, and checked against them. Each message makes a few LLM calls."
+    st.set_page_config(
+        page_title=f"{web_ui.APP_NAME} · Sri Lanka travel planner", page_icon="🌴"
     )
+    web_ui.apply_theme()
+    st.markdown(web_ui.hero_html(model_label()), unsafe_allow_html=True)
 
     from ai_travel_assistant.llm_basics import ConfigError
     from ai_travel_assistant.robustness import describe_llm_error
@@ -150,21 +209,34 @@ def main() -> None:
     state.setdefault("last_steps", [])
     user_id = sidebar(graph)
 
-    messages = graph.get_state(_thread_config(state.thread_id)).values.get(
-        "messages", []
+    values = graph.get_state(_thread_config(state.thread_id)).values
+    history = visible_history(values.get("messages", []))
+    plan_text = itinerary_markdown(values.get("itinerary"))
+    # Only the latest showing of the current plan becomes cards; earlier
+    # versions (before an edit) stay as the text they were.
+    card_at = max(
+        (i for i, (role, text) in enumerate(history) if text.strip() == plan_text),
+        default=None,
     )
-    for role, text in visible_history(messages):
-        with st.chat_message(role):
-            st.markdown(text)
+    for i, (role, text) in enumerate(history):
+        avatar = web_ui.USER_AVATAR if role == "user" else web_ui.ASSISTANT_AVATAR
+        with st.chat_message(role, avatar=avatar):
+            if i == card_at:
+                web_ui.render_itinerary(values["itinerary"], text, key=str(i))
+            else:
+                st.markdown(text)
     if state.last_steps:
-        with st.expander(f"How the last answer was made ({len(state.last_steps)} steps)"):
+        label = f"How the last answer was made ({len(state.last_steps)} steps)"
+        with st.expander(label):
             for line in state.last_steps:
                 st.write(line)
-    if pending_question(graph, state.thread_id):
+    waiting = pending_question(graph, state.thread_id)
+    if waiting:
         st.info("The assistant is waiting for your answer to its question.")
 
-    if prompt := st.chat_input(PLACEHOLDER):
-        with st.chat_message("user"):
+    picked = None if history or waiting else suggestions()
+    if prompt := st.chat_input(PLACEHOLDER) or picked:
+        with st.chat_message("user", avatar=web_ui.USER_AVATAR):
             st.markdown(prompt)
         try:
             state.last_steps = render_turn(graph, state.thread_id, prompt, user_id)
