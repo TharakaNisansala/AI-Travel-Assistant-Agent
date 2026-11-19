@@ -33,6 +33,7 @@ from ai_travel_assistant.schemas import PartyMember, RequestUnderstanding, TripR
 # the questions themselves are tested here and in test_clarification_graph.
 COMPLETE = {
     "origin": "Colombo",
+    "wants_hotels": False,
     "travellers": 2,
     "nationality": "British",  # the code maps it to non_saarc
     "children": 0,
@@ -118,8 +119,16 @@ FULL_TRIP = {
     "citizenship": "non_saarc",
     "children": 0,
     "origin": "Colombo",
+    "wants_hotels": False,
 }
-ALL_FIELDS = ["destination", "days", "travellers", "citizenship", "origin"]
+ALL_FIELDS = [
+    "destination",
+    "days",
+    "travellers",
+    "citizenship",
+    "origin",
+    "wants_hotels",
+]
 
 
 def test_missing_critical_treats_blank_as_missing():
@@ -134,7 +143,13 @@ def test_missing_fields_come_in_the_order_they_are_asked():
         "destination",
         "travellers",
         "citizenship",
+        "wants_hotels",
     ]
+    # A room budget is asked only of someone who wants hotel suggestions.
+    hotels = {**FULL_TRIP, "wants_hotels": True}
+    assert missing_critical(hotels) == ["budget"]
+    assert missing_critical({**hotels, "budget": "luxury"}) == []
+    assert missing_critical({**hotels, "room_budget": 10000}) == []
     group_only = {k: v for k, v in FULL_TRIP.items() if k != "children"}
     assert missing_critical(group_only) == ["children"]
     assert missing_critical({**FULL_TRIP, "citizenship": "mixed"}) == ["party"]
@@ -355,7 +370,13 @@ def test_understand_records_intent_trip_and_missing_fields():
     )
     assert update["intent"] == "plan"
     assert update["trip_request"]["destination"] == "Galle"
-    assert update["missing_fields"] == ["days", "travellers", "citizenship", "origin"]
+    assert update["missing_fields"] == [
+        "days",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels",
+    ]
     assert update["clarification_rounds"] == 0
 
 
@@ -398,7 +419,12 @@ def test_a_reply_is_read_with_its_question_and_known_details():
     ]
     assert update["intent"] == "plan"  # a reply to our question is planning
     assert update["trip_request"]["days"] == 3
-    assert update["missing_fields"] == ["travellers", "citizenship", "origin"]
+    assert update["missing_fields"] == [
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels",
+    ]
     assert update["clarification_context"] is None
     assert update["clarification_rounds"] == 1
 
@@ -434,6 +460,7 @@ def test_modify_without_any_plan_is_a_new_plan():
         "travellers",
         "citizenship",
         "origin",
+        "wants_hotels",
     ]
 
 
@@ -558,7 +585,7 @@ def test_a_clicked_quick_reply_makes_no_understander_call():
     assert update["intent"] == "plan"
     assert update["trip_request"]["citizenship"] == "saarc"
     assert update["trip_request"]["destination"] == "Galle"
-    assert update["missing_fields"] == ["days", "children", "origin"]
+    assert update["missing_fields"] == ["days", "children", "origin", "wants_hotels"]
     assert update["clarification_field"] is None
     assert update["clarification_rounds"] == 1
 

@@ -145,7 +145,10 @@ def test_each_category_is_priced_and_the_budget_adds_up():
     assert (budget.total_lkr, budget.total_usd) == (3600.0, 12.0)
     assert budget.per_person_lkr is None  # a mixed group pays different prices
     assert budget.group == "2 Sri Lankan adults, 1 non-SAARC foreign adult"
-    assert budget.not_included == list(NOT_INCLUDED)
+    assert budget.not_included == [
+        "Accommodation (no hotel suggestions were made)",
+        *NOT_INCLUDED,
+    ]
 
 
 def test_an_unpublished_category_is_listed_not_guessed():
@@ -178,7 +181,12 @@ def test_a_uniform_group_gets_a_per_person_figure():
 
 def test_nothing_to_price_means_no_budget():
     money = build_costs(itinerary(costs=[]), [], TRIP, today=TODAY)
-    assert money == {"entrance_fees": [], "cost_lines": [], "budget": None}
+    assert money == {
+        "entrance_fees": [],
+        "cost_lines": [],
+        "stays": None,
+        "budget": None,
+    }
 
 
 # --- Guide costs: per person and for the group -----
@@ -288,7 +296,12 @@ def test_the_plan_gets_the_group_fees_from_the_tool_artifact():
     understander = FakeUnderstander(
         {
             "Plan 2 days in Ella": understood(
-                "plan", destination="Ella", days=2, origin="Colombo", party=party
+                "plan",
+                destination="Ella",
+                days=2,
+                origin="Colombo",
+                party=party,
+                wants_hotels=False,
             )
         }
     )

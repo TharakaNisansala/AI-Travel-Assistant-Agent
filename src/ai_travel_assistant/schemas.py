@@ -24,7 +24,8 @@ CRITICAL_FIELDS = ("destination", "days")
 # travellers sets the group size; citizenship, party and children decide the
 # ticket category of each traveller (see party.py); origin is where day 1
 # starts. citizenship, party and children are asked only when party.py says
-# they are still open.
+# they are still open. wants_hotels asks for place-to-stay suggestions; budget
+# (a level) is asked only when they want them and gave no nightly amount.
 PLAN_FIELDS = (
     "destination",
     "days",
@@ -33,6 +34,8 @@ PLAN_FIELDS = (
     "party",
     "children",
     "origin",
+    "wants_hotels",
+    "budget",
 )
 
 
@@ -134,6 +137,25 @@ class TripRequest(BaseModel):
             "Where in Sri Lanka the trip starts, e.g. 'Colombo' or 'Katunayake' "
             "(the international airport). Null if not stated."
         ),
+    )
+    wants_hotels: bool | None = Field(
+        default=None,
+        description=(
+            "true if they ask for hotels or where to stay; false if they say "
+            "they already have a place or do not want suggestions. Null "
+            "otherwise."
+        ),
+    )
+    room_budget: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "The most they want to pay for a room per night, only if they gave "
+            "an amount, e.g. 10000 for 'up to 10,000 rupees a night'."
+        ),
+    )
+    room_budget_currency: Literal["LKR", "USD"] | None = Field(
+        default=None, description="The currency of room_budget, as they said it."
     )
 
     def missing_critical_fields(self) -> list[str]:
@@ -409,6 +431,28 @@ class CostLine(BaseModel):
     per_person_usd: float | None = None
 
 
+class StayItem(BaseModel):
+    """One suggested place to stay, as the guide lists it."""
+
+    name: str
+    level: str  # "Budget", "Mid-range", "Luxury", "Other"
+    price_text: str = ""
+    listed_year: int | None = None
+    recent: bool = False  # listed within hotel_service.RECENT_YEARS
+    url: str = ""
+    description: str = ""
+
+
+class StaySuggestions(BaseModel):
+    """Places to stay from the guide; never booked, availability not checked."""
+
+    source_url: str
+    wanted: str = ""  # "mid-range places", "up to LKR 10,000 a room a night"
+    items: list[StayItem] = Field(default_factory=list)
+    unpriced: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
 class Budget(BaseModel):
     """The trip's money in one place: verified, estimated and missing."""
 
@@ -420,6 +464,9 @@ class Budget(BaseModel):
     entrance_estimated_usd: float | None = 0.0
     other_estimated_lkr: float | None = 0.0
     other_estimated_usd: float | None = 0.0
+    accommodation_lkr: float | None = None  # upper estimate; None: not included
+    accommodation_usd: float | None = None
+    accommodation_note: str = ""
     total_lkr: float | None = 0.0
     total_usd: float | None = 0.0
     per_person_lkr: float | None = None  # only when everyone pays the same
@@ -437,4 +484,5 @@ class Itinerary(ItineraryDraft):
     warnings: list[str] = Field(default_factory=list)
     entrance_fees: list[AttractionFees] = Field(default_factory=list)
     cost_lines: list[CostLine] = Field(default_factory=list)
+    stays: StaySuggestions | None = None
     budget: Budget | None = None

@@ -5,7 +5,7 @@
 #     two ways, change the message, not the label.
 #   - `expect` holds properties to check, never an expected answer text.
 #   - trip: a null value means "the traveller did not say this; it must stay empty".
-#   - The 17 first-step tool-selection cases live in tests/test_tool_selection.py.
+#   - The 19 first-step tool-selection cases live in tests/test_tool_selection.py.
 #   - A plan request must state everything the agent asks for before planning
 #     (destination, days, group size, citizenship, children for a group, start
 #     place); otherwise it is a clarify scenario. Ticket prices depend on

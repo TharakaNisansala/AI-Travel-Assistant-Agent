@@ -88,6 +88,7 @@ def standard_understander() -> FakeUnderstander:
                 destination="Galle",
                 days=2,
                 origin="Colombo",
+                wants_hotels=False,
                 travellers=2,
                 party=[PartyMember(nationality="British", count=2)],
             ),
@@ -102,6 +103,7 @@ def standard_understander() -> FakeUnderstander:
                 destination="Ella",
                 days=3,
                 origin="Kandy",
+                wants_hotels=False,
                 travellers=1,
                 nationality="Sri Lankan",
             ),
@@ -240,6 +242,8 @@ def test_two_rounds_ask_only_for_what_is_still_missing():
             "All from a SAARC country",
             "1 child",
             "The airport (Katunayake)",
+            "Yes, suggest hotels",
+            "Mid-range",
         )
     ]
 
@@ -249,10 +253,14 @@ def test_two_rounds_ask_only_for_what_is_still_missing():
     assert questions[2].startswith(ASK_CITIZENSHIP)
     assert questions[3].startswith("How many of the 4 travellers are children?")
     assert questions[4] == "Where will you start your trip to Galle from?"
-    assert questions[5] == "Day 1 in Galle ..."
+    assert questions[5].startswith("Would you like hotel suggestions")
+    assert "can't book" in questions[5]
+    assert questions[6].startswith("What's your budget for a room per night?")
+    assert questions[7] == "Day 1 in Galle ..."
     trip = saved(graph)["trip_request"]
     assert (trip["days"], trip["travellers"], trip["children"]) == (3, 4, 1)
     assert (trip["citizenship"], trip["origin"]) == ("saarc", "Katunayake")
+    assert (trip["wants_hotels"], trip["budget"]) == (True, "mid-range")
 
 
 def test_resuming_runs_no_node_twice():

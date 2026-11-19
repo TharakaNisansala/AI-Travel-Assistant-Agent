@@ -39,7 +39,7 @@ config:
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	llm(llm)
-	tools(tools<hr/><small><em>__tools = search_destinations, get_weather_forecast, find_attractions, get_destination_guide, estimate_travel_time, convert_currency, get_attraction_prices</em></small>)
+	tools(tools<hr/><small><em>__tools = search_destinations, get_weather_forecast, find_attractions, get_destination_guide, estimate_travel_time, convert_currency, get_attraction_prices, suggest_hotels</em></small>)
 	save_memory(save_memory)
 	understand_request(understand_request)
 	ask_clarification(ask_clarification)

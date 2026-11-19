@@ -105,6 +105,16 @@ QUICK_REPLIES: dict[str, tuple[tuple[str, Any], ...]] = {
         ("3 children", 3),
     ),
     # "party" has no buttons: a mixed group is typed ("2 Sri Lankans, 1 Indian").
+    # Suggestions only: this app cannot book or check availability.
+    "wants_hotels": (
+        ("Yes, suggest hotels", True),
+        ("No thanks", False),
+    ),
+    "budget": (
+        ("Budget", "budget"),
+        ("Mid-range", "mid-range"),
+        ("Luxury", "luxury"),
+    ),
     "origin": (
         ("Colombo", "Colombo"),
         ("The airport (Katunayake)", "Katunayake"),
@@ -271,16 +281,23 @@ def missing_critical(trip: Mapping[str, object] | None) -> list[str]:
     """
     trip = trip or {}
     open_group = set(missing_group_fields(trip))
+    if (
+        trip.get("wants_hotels") is True
+        and _is_missing(trip.get("budget"))
+        and _is_missing(trip.get("room_budget"))
+    ):
+        open_group.add("budget")
     return [
         name
         for name in PLAN_FIELDS
         if (name in open_group)
-        or (name not in GROUP_FIELDS and _is_missing(trip.get(name)))
+        or (name not in CONDITIONAL_FIELDS and _is_missing(trip.get(name)))
     ]
 
 
-# The fields party.missing_group_fields() decides about.
+# Asked only when another answer makes them needed (see missing_critical).
 GROUP_FIELDS = ("citizenship", "party", "children")
+CONDITIONAL_FIELDS = (*GROUP_FIELDS, "budget")
 
 
 def _squash(text: str) -> str:
@@ -525,6 +542,17 @@ def clarification_question(missing: Sequence[str], trip: Mapping | None) -> str:
             f"How many of the {group} travellers are children? "
             "Child ticket rules differ from site to site."
         )
+    if field == "wants_hotels":
+        return (
+            "Would you like hotel suggestions for your stay? I can't book rooms "
+            "or check availability, but I can list places from the travel "
+            "guide with their last listed prices."
+        )
+    if field == "budget":
+        return (
+            "What's your budget for a room per night? Pick a level, or type an "
+            "amount, e.g. 'LKR 10,000'."
+        )
     return f"Where will you start your trip to {place} from?"
 
 
@@ -591,6 +619,15 @@ def trip_prompt_note(trip: Mapping | None, missing: Sequence[str]) -> str:
             "verified. Give each cost per person and for the whole group, and "
             "end the plan with the total for the group."
         )
+    wants_hotels = (trip or {}).get("wants_hotels")
+    if wants_hotels is True:
+        note += (
+            " The traveller wants hotel suggestions: when gathering data for "
+            "the plan, also call suggest_hotels for the destination. Name only "
+            "places it returns, and say you cannot book or check availability."
+        )
+    elif wants_hotels is False:
+        note += " The traveller does not want hotel suggestions; do not add any."
     categories = {category for category, _, _ in group_breakdown(trip)}
     if categories == {"local"}:
         note += (

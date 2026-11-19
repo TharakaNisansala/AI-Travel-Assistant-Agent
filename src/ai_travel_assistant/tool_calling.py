@@ -187,6 +187,7 @@ from ai_travel_assistant.tools import (
     get_destination_guide,
     get_weather_forecast,
     search_destinations,
+    suggest_hotels,
 )
 
 if TYPE_CHECKING:  # only for the annotation; llm_basics loads Gemini code
@@ -202,6 +203,7 @@ TOOLS: tuple[BaseTool, ...] = (
     estimate_travel_time,
     convert_currency,
     get_attraction_prices,
+    suggest_hotels,
 )
 
 # Node names. "tools" is the name tools_condition returns, so the tool node must
@@ -249,9 +251,10 @@ SYSTEM_PROMPT = (
     "around, where to stay, or for practical or safety tips, call "
     "get_destination_guide with the place name and the matching topic "
     "(overview, getting_there, getting_around, see_and_do, accommodation, "
-    "safety; all when planning a whole visit). Name only places to stay that "
-    "the guide mentions, never invent hotels, and say you cannot check "
-    "availability or book. "
+    "safety; all when planning a whole visit). For named hotels or guest "
+    "houses, call suggest_hotels with the place name instead; name only places "
+    "it returned, never invent hotels, and say you cannot book or check "
+    "availability. "
     "Mention that the guide is from Wikivoyage and may be out of date. For a "
     "list of nearby sights with distances, prefer find_attractions. "
     # Distances between places.

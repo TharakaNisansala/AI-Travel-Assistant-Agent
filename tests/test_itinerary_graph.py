@@ -503,6 +503,7 @@ class Understander:
                     destination="Ella",
                     days=2,
                     origin="Colombo",
+                    wants_hotels=False,
                     travellers=2,
                     nationality="British",
                     children=0,

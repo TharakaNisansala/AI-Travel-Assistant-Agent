@@ -58,6 +58,7 @@ from ai_travel_assistant import (
     attractions_service,
     currency_service,
     guide_service,
+    hotel_service,
     pricing_service,
     travel_service,
     weather_service,
@@ -876,3 +877,106 @@ def get_attraction_prices(
         ],
     }
     return text, artifact
+
+
+# --- Places to stay (hotel_service.py) ---------------------------------------------
+
+HOTEL_DISCLAIMER = (
+    "These come from Wikivoyage (community-written) and prices may be out of "
+    "date. This app cannot book rooms or check availability: tell the "
+    "traveller to contact the hotel. Name only these places; never add others."
+)
+
+
+def listing_line(listing: hotel_service.Listing, today: date) -> str:
+    """'Hill Top Guest House (Mid-range): Rs 5,500 with breakfast (listed 2023)'."""
+    level = hotel_service.TIER_LABELS[listing.tier]
+    price = listing.price_text or "price not listed"
+    if listing.listed_year is None:
+        when = "date of listing unknown"
+    elif listing.is_recent(today):
+        when = f"listed {listing.listed_year}"
+    else:
+        when = f"listed {listing.listed_year}, may have changed"
+    line = f"{listing.name} ({level}): {price} ({when})"
+    return line + (f", {listing.url}" if listing.url else "")
+
+
+def _room_budget_lkr(trip: dict, lkr_per_usd: float | None) -> float | None:
+    amount = trip.get("room_budget")
+    if not amount:
+        return None
+    if trip.get("room_budget_currency") == "USD":
+        return amount * lkr_per_usd if lkr_per_usd else None
+    return float(amount)
+
+
+@tool(response_format="content_and_artifact")
+def suggest_hotels(
+    destination: str,
+    state: Annotated[dict, InjectedState],
+) -> tuple[str, dict]:
+    """Suggest places to stay at a destination, for the traveller's budget.
+
+    Use this when the traveller wants hotel suggestions or asks where to stay
+    at a named place. Pass just the place name, e.g. "Kandy". The budget level
+    or nightly amount comes from the trip details, so do not pass it. Returns
+    hotels and guest houses from the travel guide with their listed prices and
+    the year each was listed. It cannot book rooms or check availability.
+
+    Args:
+        destination: The place to stay at, e.g. "Ella".
+    """
+    trip = (state or {}).get("trip_request") or {}
+    try:
+        stays = hotel_service.fetch_stays(destination)
+    except GuideServiceError as exc:
+        return (
+            f"Hotel suggestions unavailable for '{destination}': {exc} "
+            "Tell the traveller; do not name hotels from memory.",
+            {},
+        )
+    today = date.today()
+    lkr_per_usd, rate_note = _lkr_per_usd()
+    tier = hotel_service.BUDGET_TO_TIER.get(trip.get("budget") or "")
+    max_lkr = _room_budget_lkr(trip, lkr_per_usd)
+    choice = hotel_service.choose(
+        stays.listings, tier=tier, max_lkr=max_lkr, lkr_per_usd=lkr_per_usd
+    )
+    wanted = []
+    if tier:
+        wanted.append(f"{hotel_service.TIER_LABELS[tier].lower()} places")
+    if max_lkr:
+        wanted.append(f"up to LKR {max_lkr:,.0f} a room a night")
+    heading = f"Places to stay in {stays.title}" + (
+        f" ({', '.join(wanted)})" if wanted else ""
+    )
+    lines = [f"{heading}, from {stays.article_url}:"]
+    if choice.note:
+        lines.append(choice.note)
+    if not stays.listings:
+        lines.append("The guide lists no places to stay here.")
+    elif not choice.fits:
+        lines.append("None of the listed places has a readable price that fits.")
+    lines.extend(f"- {listing_line(x, today)}" for x in choice.fits)
+    if choice.unpriced:
+        lines.append(
+            "Price not listed (cannot be checked against the budget): "
+            + ", ".join(x.name for x in choice.unpriced)
+        )
+    if max_lkr and rate_note:
+        lines.append(rate_note)
+    lines.append(HOTEL_DISCLAIMER)
+    artifact = {
+        "destination": stays.destination,
+        "title": stays.title,
+        "article_url": stays.article_url,
+        "level": tier,
+        "max_lkr": max_lkr,
+        "lkr_per_usd": lkr_per_usd,
+        "checked_on": today.isoformat(),
+        "note": choice.note,
+        "listings": [x.to_json() for x in choice.fits],
+        "unpriced": [x.to_json() for x in choice.unpriced],
+    }
+    return "\n".join(lines), artifact

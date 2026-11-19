@@ -66,6 +66,9 @@ def test_schema_descriptions_reach_the_json_schema():
         "citizenship",
         "party",
         "origin",
+        "wants_hotels",
+        "room_budget",
+        "room_budget_currency",
     }
 
 

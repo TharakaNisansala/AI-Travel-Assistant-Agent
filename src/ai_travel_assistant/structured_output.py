@@ -65,6 +65,11 @@ Rules:
   [{Sri Lankan, adult, 2}, {Indian, adult, 1}, {German, child, 1}]. For a
   dual citizen write nationality "dual". Leave party empty otherwise.
 
+- wants_hotels: true for "find us a hotel" or "where should we stay";
+  false for "we already booked" or "no hotels". room_budget and its currency
+  only for a nightly amount ("up to 10,000 rupees a night" is 10000 LKR); a
+  level such as "cheap" or "luxury" goes in budget instead.
+
 Follow-up replies:
 - The message may start with the question the assistant just asked and the trip
   details already known, followed by the traveller's latest reply. Extract from
@@ -76,7 +81,8 @@ Follow-up replies:
   you start ...?", a place name gives the origin, not the destination. After
   "How many people are travelling...?", a number gives travellers. After "How
   many ... are children?", a number gives children. After a question about
-  citizenship, fill citizenship or party.
+  citizenship, fill citizenship or party. After "What's your budget for a
+  room per night?", an amount gives room_budget, a word gives budget.
 - A number means days only if the question asked for the trip length or the
   traveller says it is a duration. "We are 3" is travellers, not days. If the
   reply does not answer the question, leave the asked-for fields null.

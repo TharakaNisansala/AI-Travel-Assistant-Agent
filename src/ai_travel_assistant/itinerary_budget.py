@@ -22,6 +22,7 @@ What this file demonstrates:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -29,6 +30,7 @@ from typing import Any
 
 from langchain_core.messages import AnyMessage, ToolMessage
 
+from ai_travel_assistant.hotel_service import RECENT_YEARS, TIER_LABELS, Listing
 from ai_travel_assistant.party import describe_group, group_breakdown
 from ai_travel_assistant.pricing_service import (
     AttractionPrices,
@@ -43,6 +45,8 @@ from ai_travel_assistant.schemas import (
     FeeCategory,
     FeeLine,
     Itinerary,
+    StayItem,
+    StaySuggestions,
 )
 from ai_travel_assistant.trip_costs import (
     CATEGORY_LABELS,
@@ -115,6 +119,118 @@ def _in_plan(entry: Mapping, itinerary: Itinerary) -> bool:
             if words and words <= keys[1]:
                 return True
     return False
+
+
+# --- Places to stay ------------------------------------------------------------
+
+HOTELS_TOOL = "suggest_hotels"
+PEOPLE_PER_ROOM = 2
+
+
+def hotel_results(
+    messages: Sequence[AnyMessage], destination: str
+) -> dict[str, Any] | None:
+    """The latest suggest_hotels artifact for this destination, or None."""
+    wanted = set(name_words(destination))
+    found = None
+    for message in messages:
+        if not (
+            isinstance(message, ToolMessage)
+            and message.name == HOTELS_TOOL
+            and isinstance(message.artifact, Mapping)
+            and "listings" in message.artifact
+        ):
+            continue
+        art = message.artifact
+        names = set(name_words(art.get("title") or "")) | set(
+            name_words(art.get("destination") or "")
+        )
+        if wanted and (wanted <= names or names <= wanted):
+            found = dict(art)
+    return found
+
+
+def stay_suggestions(art: Mapping[str, Any], today: date) -> StaySuggestions:
+    listings = [Listing.from_json(x) for x in art.get("listings") or []]
+    wanted = []
+    if art.get("level"):
+        wanted.append(f"{TIER_LABELS[art['level']].lower()} places")
+    if art.get("max_lkr"):
+        wanted.append(f"up to LKR {art['max_lkr']:,.0f} a room a night")
+    return StaySuggestions(
+        source_url=art.get("article_url") or "",
+        wanted=", ".join(wanted),
+        items=[
+            StayItem(
+                name=x.name,
+                level=TIER_LABELS[x.tier],
+                price_text=x.price_text,
+                listed_year=x.listed_year,
+                recent=x.is_recent(today),
+                url=x.url,
+                description=x.description,
+            )
+            for x in listings
+        ],
+        unpriced=[x["name"] for x in art.get("unpriced") or []],
+        note=art.get("note") or "",
+    )
+
+
+def accommodation_estimate(
+    art: Mapping[str, Any],
+    *,
+    days: int,
+    travellers: int | None,
+    today: date,
+) -> tuple[Money | None, str]:
+    """An upper estimate for the stay from recent prices, or (None, reason).
+
+    Rooms are the travellers two to a room (stated as an assumption); a price
+    per person is multiplied by the travellers instead. Only listings from
+    the last RECENT_YEARS years count.
+    """
+    nights = max(days - 1, 0)
+    if nights == 0:
+        return None, "a one-day trip has no night's stay"
+    rate = art.get("lkr_per_usd")
+    rooms = math.ceil(travellers / PEOPLE_PER_ROOM) if travellers else 1
+    best: tuple[Money, Listing, int] | None = None
+    for listing in (Listing.from_json(x) for x in art.get("listings") or []):
+        if not listing.is_recent(today) or listing.high is None:
+            continue
+        if listing.basis == "person":
+            if not travellers:
+                continue
+            units = travellers
+        else:
+            units = rooms
+        total = listing.high * units * nights
+        if listing.currency == "LKR":
+            money = Money(total, total / rate if rate else None)
+        else:
+            money = Money(total * rate if rate else None, total)
+        key = money.lkr if money.lkr is not None else (money.usd or 0) * 1000
+        if best is None or key > (best[0].lkr or (best[0].usd or 0) * 1000):
+            best = (money, listing, units)
+    if best is None:
+        return None, (
+            f"no price listed in the last {RECENT_YEARS} years for the suggested places"
+        )
+    money, listing, units = best
+    who = (
+        f"{units} {'person' if units == 1 else 'people'}"
+        if listing.basis == "person"
+        else f"{units} room{'s' if units != 1 else ''} "
+        f"(assuming {PEOPLE_PER_ROOM} people per room)"
+    )
+    note = (
+        f"{who} x {nights} night{'s' if nights != 1 else ''}, at the highest "
+        f"recently listed price ({listing.name}: {listing.price_text}, listed "
+        f"{listing.listed_year}). An upper estimate; book and check prices with "
+        "the hotel."
+    )
+    return money, note
 
 
 # --- Building the money fields -----
@@ -197,7 +313,7 @@ def build_costs(
     *,
     today: date,
 ) -> dict[str, Any]:
-    """The entrance_fees, cost_lines and budget fields for a checked itinerary."""
+    """The entrance_fees, cost_lines, stays and budget of a checked itinerary."""
     trip = dict(trip_request or {})
     group = group_breakdown(trip)
     travellers = trip.get("travellers") or None
@@ -215,14 +331,31 @@ def build_costs(
         )
     fees = [_fees(c, results.lkr_per_usd) for c in costs]
     lines = [cost_line(c, travellers) for c in itinerary.costs]
-    if not fees and not lines:
-        return {"entrance_fees": [], "cost_lines": [], "budget": None}
+    hotels = hotel_results(messages, itinerary.destination)
+    stays = stay_suggestions(hotels, today) if hotels else None
+    if not fees and not lines and stays is None:
+        return {"entrance_fees": [], "cost_lines": [], "stays": None, "budget": None}
+
+    not_included = list(NOT_INCLUDED)
+    accommodation, stay_note = None, ""
+    if hotels:
+        accommodation, stay_note = accommodation_estimate(
+            hotels, days=itinerary.days, travellers=travellers, today=today
+        )
+        if accommodation is None:
+            not_included.insert(0, f"Accommodation ({stay_note})")
+    elif trip.get("wants_hotels") is False:
+        not_included.insert(0, "Accommodation (you said you have your own)")
+    else:
+        not_included.insert(0, "Accommodation (no hotel suggestions were made)")
 
     summary = summarise(costs, travellers or 0)
     other = ZERO
     for line in lines:
         other = other + Money(line.group_lkr, line.group_usd)
     total = summary.verified + summary.estimated + other
+    if accommodation is not None:
+        total = total + accommodation
     uniform = len(group) == 1 and travellers
     rate_note = " ".join(
         part for part in (results.rate_note, *results.problems) if part
@@ -236,6 +369,9 @@ def build_costs(
         entrance_estimated_usd=summary.estimated.usd,
         other_estimated_lkr=other.lkr,
         other_estimated_usd=other.usd,
+        accommodation_lkr=accommodation.lkr if accommodation else None,
+        accommodation_usd=accommodation.usd if accommodation else None,
+        accommodation_note=stay_note if accommodation else "",
         total_lkr=total.lkr,
         total_usd=total.usd,
         per_person_lkr=total.lkr / travellers
@@ -246,10 +382,15 @@ def build_costs(
         else None,
         not_verified=summary.unverified,
         requires_confirmation=summary.not_found,
-        not_included=list(NOT_INCLUDED),
+        not_included=not_included,
         rate_note=rate_note,
     )
-    return {"entrance_fees": fees, "cost_lines": lines, "budget": budget}
+    return {
+        "entrance_fees": fees,
+        "cost_lines": lines,
+        "stays": stays,
+        "budget": budget,
+    }
 
 
 # --- One layout for every screen -----
@@ -329,6 +470,43 @@ def budget_sections(plan: Mapping[str, Any]) -> list[Section]:
             )
         )
 
+    stays = plan.get("stays")
+    if stays:
+        items = []
+        for stay in stays.get("items") or []:
+            year = stay.get("listed_year")
+            if year is None:
+                when = "date of listing unknown"
+            elif stay.get("recent"):
+                when = f"listed {year}"
+            else:
+                when = f"listed {year}, may have changed"
+            details = [f"Price: {stay.get('price_text') or 'not listed'} ({when})"]
+            if stay.get("description"):
+                details.append(stay["description"])
+            if stay.get("url"):
+                details.append(f"Website: {stay['url']}")
+            items.append(Item(f"{stay['name']} ({stay['level']})", details))
+        if stays.get("unpriced"):
+            items.append(
+                Item(
+                    "Price not listed (not checked against your budget)",
+                    stays["unpriced"],
+                )
+            )
+        if not stays.get("items"):
+            items.append(Item("The guide lists no places that fit."))
+        if stays.get("note"):
+            items.append(Item(stays["note"]))
+        items.append(
+            Item(
+                "From Wikivoyage: not booked and availability not checked; "
+                f"contact the hotel. {stays.get('source_url', '')}".strip()
+            )
+        )
+        wanted = f" ({stays['wanted']})" if stays.get("wanted") else ""
+        sections.append((f"Where to stay{wanted}", items))
+
     budget = plan.get("budget")
     if budget:
         items = []
@@ -357,6 +535,14 @@ def budget_sections(plan: Mapping[str, Any]) -> list[Section]:
         other = (budget.get("other_estimated_lkr"), budget.get("other_estimated_usd"))
         if lines:
             items.append(Item(f"Other estimated costs: {_money(*other)}"))
+        stay_money = (budget.get("accommodation_lkr"), budget.get("accommodation_usd"))
+        if stay_money != (None, None):
+            items.append(
+                Item(
+                    f"Accommodation (upper estimate): {_money(*stay_money)}",
+                    [budget.get("accommodation_note") or ""],
+                )
+            )
         items.append(
             Item(
                 "TOTAL estimated budget for the group: "

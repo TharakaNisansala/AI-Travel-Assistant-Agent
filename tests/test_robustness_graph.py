@@ -392,6 +392,7 @@ def plan_understander(text, **context):
                 destination="Galle",
                 days=2,
                 origin="Colombo",
+                wants_hotels=False,
                 travellers=1,
                 nationality="Sri Lankan",
             ),

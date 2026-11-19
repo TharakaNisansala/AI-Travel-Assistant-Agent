@@ -174,6 +174,8 @@ def test_quick_replies_answer_every_question_then_the_plan_comes(page):
     click_quick_reply(app, "No, all adults")
     assert texts(app)[-1] == "Where will you start your trip to Ella from?"
     click_quick_reply(app, "The airport (Katunayake)")
+    assert texts(app)[-1].startswith("Would you like hotel suggestions")
+    click_quick_reply(app, "No thanks")
 
     shown = texts(app)
     assert "The airport (Katunayake)" in shown  # the click is the reply
