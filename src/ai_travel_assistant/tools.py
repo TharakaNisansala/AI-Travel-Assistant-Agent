@@ -449,8 +449,9 @@ def find_attractions(
     (e.g. waterfall, viewpoint, temple, museum) and straight-line distance in
     km, or a message explaining why none could be found. If OpenStreetMap
     cannot be reached, it returns the sights named in the place's Wikivoyage
-    guide instead (without distances) and says so. It does NOT cover hotels,
-    restaurants, shops or hiking routes.
+    guide instead (without distances) and says so. It does NOT cover hotels
+    (use get_destination_guide with topic "accommodation"), restaurants, shops
+    or hiking routes.
 
     Args:
         destination: Only the place name, e.g. "Ella" or "Kandy".
@@ -527,6 +528,7 @@ TOPIC_LABELS = {
     "getting_there": "getting there",
     "getting_around": "getting around",
     "see_and_do": "see and do",
+    "accommodation": "accommodation",
     "safety": "safety and health",
 }
 
@@ -577,6 +579,7 @@ def get_destination_guide(destination: str, topic: Topic = "all") -> str:
             "getting_there" - how to reach it (train, bus, air);
             "getting_around" - local transport;
             "see_and_do" - sights and activities;
+            "accommodation" - where to stay (guesthouses, hotels, price ranges);
             "safety" - safety and health tips;
             "all" - a shorter excerpt of every topic above (default).
     """
