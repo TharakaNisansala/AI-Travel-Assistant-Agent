@@ -46,15 +46,19 @@ print(convert_currency.invoke({'amount': 100, 'from_currency': 'USD', \
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import Annotated
 
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from ai_travel_assistant import (
     attractions_service,
     currency_service,
     guide_service,
+    pricing_service,
     travel_service,
     weather_service,
 )
@@ -71,7 +75,18 @@ from ai_travel_assistant.guide_service import (
     GuideServiceError,
     Topic,
 )
+from ai_travel_assistant.party import describe_group, group_breakdown
+from ai_travel_assistant.pricing_service import CategoryPrice, PriceRecord
 from ai_travel_assistant.travel_service import TravelEstimate, TravelServiceError
+from ai_travel_assistant.trip_costs import (
+    CATEGORY_LABELS,
+    ZERO,
+    EntranceSummary,
+    Money,
+    attraction_cost,
+    record_money,
+    summarise,
+)
 from ai_travel_assistant.weather_service import WeatherReport, WeatherServiceError
 
 # --- The offline dataset ------------------------------------------------------
@@ -717,3 +732,182 @@ def convert_currency(amount: float, from_currency: str, to_currency: str) -> str
             "do not use a remembered exchange rate."
         )
     return format_conversion(conversion)
+
+
+# --- Ticket prices (pricing_service.py, trip_costs.py) --------------------------------
+
+
+def _amount(money: Money | None) -> str:
+    """'LKR 11,760 (USD 35)'; a side that could not be worked out is left out."""
+    if money is None:
+        return "-"
+    parts = []
+    if money.lkr is not None:
+        parts.append(f"LKR {money.lkr:,.0f}")
+    if money.usd is not None:
+        usd = f"USD {money.usd:,.2f}".replace(".00", "")
+        parts.append(f"({usd})" if parts else usd)
+    return " ".join(parts) or "amount unavailable"
+
+
+def _category_line(price: CategoryPrice, lkr_per_usd: float | None) -> str:
+    label = CATEGORY_LABELS[(price.nationality, price.age_group)]
+    if price.record is None:
+        return f"- {label}: Not verified. {price.note}".rstrip()
+    record = price.record
+    each = _amount(record_money(record, lkr_per_usd))
+    unit = "" if record.unit == "person" else f" per {record.unit}"
+    line = f"- {label}: {each}{unit} · Confidence: {price.confidence}"
+    return f"{line} ({price.note})" if price.note else line
+
+
+def _sources(records: Sequence[PriceRecord]) -> list[str]:
+    seen, lines = set(), []
+    for r in records:
+        key = (r.source_url, r.source_authority)
+        if key in seen:
+            continue
+        seen.add(key)
+        dates = f"last verified {r.last_verified.isoformat()}"
+        if r.source_updated:
+            dates = f"source updated {r.source_updated.isoformat()}, " + dates
+        lines.append(
+            f"Source: {r.source_authority} ({r.status}), {r.source_url} ({dates})"
+        )
+    return lines
+
+
+def format_attraction_prices(
+    summary: EntranceSummary,
+    group_text: str,
+    problems: Sequence[str],
+    lkr_per_usd: float | None,
+    rate_note: str,
+) -> str:
+    """The text the LLM reads: every category, the group's lines, the totals."""
+    lines = ["Ticket prices by visitor category (from official sources only):"]
+    for cost in summary.attractions:
+        lines.append("")
+        if not cost.found:
+            lines.append(
+                f"{cost.query}: no price found in any official source. "
+                "Requires confirmation; do not state a price for it."
+            )
+            continue
+        lines.append(f"{cost.name}:")
+        lines.extend(_category_line(p, lkr_per_usd) for p in cost.categories)
+        lines.extend(_sources(cost.records))
+        for record in cost.records:
+            if record.conditions and record.ticket_type == "entrance":
+                lines.append(f"Conditions: {record.conditions}")
+                break
+        if cost.group:
+            lines.append("For this group:")
+            for g in cost.group:
+                if g.subtotal is not None:
+                    each, total = _amount(g.each), _amount(g.subtotal)
+                    lines.append(f"- {g.people} x {each} = {total}")
+                elif g.estimate is not None:
+                    lines.append(
+                        f"- {g.people}: ESTIMATE {_amount(g.estimate)} "
+                        f"({g.estimate_note})"
+                    )
+                else:
+                    lines.append(f"- {g.people}: not verified")
+            lines.append(f"Verified entrance subtotal: {_amount(cost.verified_total)}")
+        for extra in cost.extras:
+            lines.append(
+                f"Separate {extra.ticket_type} (not in the entrance total): "
+                f"{extra.attraction_name}, "
+                f"{_amount(record_money(extra, lkr_per_usd))} per {extra.unit} "
+                f"({_visitor(extra)})"
+            )
+
+    lines.append("")
+    if group_text:
+        lines.append(f"Group: {group_text}.")
+        lines.append(
+            f"Verified entrance fees for the group: {_amount(summary.verified)}"
+        )
+        if summary.estimated != ZERO:
+            lines.append(
+                f"Estimated (not verified) on top: {_amount(summary.estimated)}"
+            )
+        if summary.unverified:
+            lines.append(
+                "Not verified, could change the budget: "
+                + "; ".join(summary.unverified)
+            )
+    else:
+        lines.append(
+            "Who is travelling is not known yet, so no group total was worked out."
+        )
+    if summary.not_found:
+        lines.append("Requires confirmation: " + ", ".join(summary.not_found))
+    if rate_note:
+        lines.append(rate_note)
+    lines.extend(problems)
+    lines.append(
+        "Use these figures exactly. Never fill in a 'Not verified' price, never "
+        "use one category's price for another, and label every estimate as an "
+        "estimate."
+    )
+    return "\n".join(lines)
+
+
+def _visitor(record: PriceRecord) -> str:
+    """'foreign adult', 'Sri Lankan child': who a listed extra price is for."""
+    who = {"local": "Sri Lankan", "saarc": "SAARC", "non_saarc": "non-SAARC"}
+    return f"{who.get(record.nationality, record.nationality)} {record.age_group}"
+
+
+def _lkr_per_usd() -> tuple[float | None, str]:
+    """Today's rate for amounts the source gives in one currency only."""
+    try:
+        conversion = currency_service.convert(1, "USD", "LKR")
+    except CurrencyServiceError:
+        return None, "Exchange rate unavailable: the other currency is left out."
+    return conversion.rate, (
+        f"Other-currency amounts use 1 USD = {conversion.rate:,.2f} LKR "
+        "(indicative mid-market rate); a source's own LKR figure is used as given."
+    )
+
+
+@tool
+def get_attraction_prices(
+    attractions: list[str],
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Look up official entrance fees for attractions, for every visitor category.
+
+    Use this for any ticket or entrance price, and when planning a visit that
+    includes paid sights (heritage sites, museums, national parks, gardens).
+    Pass the attraction names, e.g. ["Sigiriya", "Polonnaruwa"]. Prices come
+    only from official sources (such as the Central Cultural Fund) with their
+    source link and date, separately for Sri Lankan, SAARC and other foreign
+    adults and children. The group's own costs are worked out from the trip
+    details, so do not pass head counts. A price that is not published for a
+    category is reported as not verified: never replace it with a guess, a
+    remembered price or another category's price.
+
+    Args:
+        attractions: Attraction names, at most eight.
+    """
+    trip = (state or {}).get("trip_request") or {}
+    group = group_breakdown(trip)
+    try:
+        book = pricing_service.load_price_book()
+    except pricing_service.CuratedPriceError as exc:
+        return f"Ticket prices unavailable: the curated price file is invalid ({exc})."
+    lkr_per_usd, rate_note = _lkr_per_usd()
+    today = date.today()
+    costs = [
+        attraction_cost(book.lookup(name), group, today=today, lkr_per_usd=lkr_per_usd)
+        for name in list(dict.fromkeys(a.strip() for a in attractions if a.strip()))[:8]
+    ]
+    if not costs:
+        return "No attraction names were given."
+    summary = summarise(costs, int(trip.get("travellers") or 0))
+    return format_attraction_prices(
+        summary, describe_group(trip), book.problems, lkr_per_usd, rate_note
+    )

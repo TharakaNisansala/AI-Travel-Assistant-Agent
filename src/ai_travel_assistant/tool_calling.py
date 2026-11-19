@@ -183,6 +183,7 @@ from ai_travel_assistant.tools import (
     convert_currency,
     estimate_travel_time,
     find_attractions,
+    get_attraction_prices,
     get_destination_guide,
     get_weather_forecast,
     search_destinations,
@@ -200,6 +201,7 @@ TOOLS: tuple[BaseTool, ...] = (
     get_destination_guide,
     estimate_travel_time,
     convert_currency,
+    get_attraction_prices,
 )
 
 # Node names. "tools" is the name tools_condition returns, so the tool node must
@@ -256,6 +258,14 @@ SYSTEM_PROMPT = (
     "When the traveller asks how far apart two places are or how long the "
     "journey takes, call estimate_travel_time with the two place names, and "
     "say the time is a car estimate without traffic. "
+    # Ticket prices: only from the pricing tool, per visitor category.
+    "For any entrance or ticket price (heritage sites, museums, parks, "
+    "gardens), call get_attraction_prices with the attraction names; never "
+    "state an entrance fee it did not return, and never take one from the "
+    "guide or from memory. Quote each visitor category's price as given, "
+    "with its source link and date; say 'not verified' where it says so, and "
+    "label estimates as estimates. When planning a visit, call it once for "
+    "the paid sights you include. "
     # Money.
     "When the traveller asks about exchange rates or what an amount is worth "
     "in another currency, call convert_currency with ISO codes such as USD or "

@@ -191,6 +191,7 @@ def test_build_binds_every_tool_in_order():
         "get_destination_guide",
         "estimate_travel_time",
         "convert_currency",
+        "get_attraction_prices",
     ]
 
 
