@@ -21,7 +21,7 @@ from ai_travel_assistant.request_understanding import (
     OFF_TOPIC_REPLY,
     UNDERSTAND_REQUEST,
 )
-from ai_travel_assistant.schemas import RequestUnderstanding, TripRequest
+from ai_travel_assistant.schemas import PartyMember, RequestUnderstanding, TripRequest
 from ai_travel_assistant.tool_calling import (
     ask_agent,
     build_tool_agent_graph,
@@ -33,13 +33,11 @@ from ai_travel_assistant.tool_calling import (
 )
 
 ASK_PLACE = "Where in Sri Lanka would you like to go?"
-ASK_TYPE = (
-    "Are you Sri Lankan or living in Sri Lanka, or visiting from abroad? "
-    "Entry fees and prices are often different for each."
-)
+ASK_GROUP = "How many people are travelling, including you?"
+ASK_CITIZENSHIP = "What citizenship do the travellers have?"
 # Replies that give every detail the agent asks for, so the plan goes ahead.
-GALLE = "Galle, 2 days, from Colombo; we are tourists"
-ELLA = "Plan 3 days in Ella from Kandy; I'm Sri Lankan"
+GALLE = "Galle, 2 days, from Colombo; two British adults"
+ELLA = "Plan 3 days in Ella from Kandy, just me; I'm Sri Lankan"
 
 
 class RecordingModel(GenericFakeChatModel):
@@ -90,7 +88,8 @@ def standard_understander() -> FakeUnderstander:
                 destination="Galle",
                 days=2,
                 origin="Colombo",
-                traveller_type="foreign",
+                travellers=2,
+                party=[PartyMember(nationality="British", count=2)],
             ),
         )
         .add("Galle", understood("plan", destination="Galle"))
@@ -103,7 +102,8 @@ def standard_understander() -> FakeUnderstander:
                 destination="Ella",
                 days=3,
                 origin="Kandy",
-                traveller_type="local",
+                travellers=1,
+                citizenship="local",
             ),
         )
         .add("Where can I surf?", understood("question"))
@@ -231,21 +231,28 @@ def test_two_rounds_ask_only_for_what_is_still_missing():
     graph = build(model)
 
     ask_agent(graph, "t1", "Plan me a trip")
-    second = ask_agent(graph, "t1", "Galle")
-    third = ask_agent(graph, "t1", "3")
-    fourth = ask_agent(graph, "t1", "Visiting from abroad")
-    fifth = ask_agent(graph, "t1", "The airport (Katunayake)")
+    replies = [
+        ask_agent(graph, "t1", text)
+        for text in (
+            "Galle",
+            "3",
+            "4 people",
+            "All from a SAARC country",
+            "1 child",
+            "The airport (Katunayake)",
+        )
+    ]
 
-    assert final_answer(second) == "How many days would you like to spend in Galle?"
-    assert final_answer(third) == ASK_TYPE
-    assert final_answer(fourth) == "Where will you start your trip to Galle from?"
-    assert final_answer(fifth) == "Day 1 in Galle ..."
+    questions = [final_answer(turn) for turn in replies]
+    assert questions[0] == "How many days would you like to spend in Galle?"
+    assert questions[1].startswith(ASK_GROUP)
+    assert questions[2].startswith(ASK_CITIZENSHIP)
+    assert questions[3].startswith("How many of the 4 travellers are children?")
+    assert questions[4] == "Where will you start your trip to Galle from?"
+    assert questions[5] == "Day 1 in Galle ..."
     trip = saved(graph)["trip_request"]
-    assert (trip["days"], trip["traveller_type"], trip["origin"]) == (
-        3,
-        "foreign",
-        "Katunayake",
-    )
+    assert (trip["days"], trip["travellers"], trip["children"]) == (3, 4, 1)
+    assert (trip["citizenship"], trip["origin"]) == ("saarc", "Katunayake")
 
 
 def test_resuming_runs_no_node_twice():
@@ -256,14 +263,15 @@ def test_resuming_runs_no_node_twice():
     ask_agent(graph, "t1", "Plan me a trip")
     ask_agent(graph, "t1", "Galle")
     ask_agent(graph, "t1", "3")
-    ask_agent(graph, "t1", "Visiting from abroad")
+    ask_agent(graph, "t1", "Just me")  # one traveller: no children question
+    ask_agent(graph, "t1", "All from other countries")
     ask_agent(graph, "t1", "Colombo")
 
     # Every reply is a quick reply ("Galle" and "Colombo" are buttons, "3" a
     # bare day count), so only the first message needs the understander.
     assert [text for text, _ in understander.calls] == ["Plan me a trip"]
     kinds = [type(m).__name__ for m in saved(graph)["messages"]]
-    assert kinds == ["HumanMessage", "AIMessage"] * 5
+    assert kinds == ["HumanMessage", "AIMessage"] * 6
 
 
 def test_after_the_round_limit_the_agent_answers_with_assumptions():

@@ -8,9 +8,9 @@ What this file demonstrates:
   2. Merging requirements across turns. "Plan me a trip" then "Galle" then "3"
      builds one TripRequest; a missing value never erases a saved one.
   3. Asking versus assuming. Only a PLAN request with a missing PLAN_FIELDS
-     value (destination, days, traveller_type, origin) makes the agent ask,
-     one field per question. A question without a place ("Where can I
-     surf?") goes to the agent, which can search for places.
+     value (destination, days, travellers, who is travelling, origin) makes
+     the agent ask, one field per question. A question without a place
+     ("Where can I surf?") goes to the agent, which can search for places.
   4. Human-in-the-loop with interrupt(). ask_clarification writes the question
      into the conversation; wait_for_reply calls interrupt() and the run stops.
      The caller resumes it with Command(resume=reply). On resume LangGraph
@@ -22,9 +22,9 @@ What this file demonstrates:
   6. Quick replies. Each question comes with QUICK_REPLIES buttons. A reply
      that is exactly one of them is read by a dictionary lookup, not the LLM,
      so a click costs no quota. Typed answers still go to the understander.
-  7. The traveller type (local or foreign) is a fact about the person, not
-     the trip: it is kept when the destination changes, saved to the Store
-     when the graph has one, and filled in from it on later conversations.
+  7. Who is travelling (count, citizenships, children) decides the ticket
+     category of each person; party.py turns it into counts per category.
+     It is about the group, not the trip, so a new destination keeps it.
 
 The nodes work on the agent's state (tool_calling.AgentState). The graph wiring
 lives in tool_calling.build_tool_agent_graph(..., understander=...).
@@ -40,7 +40,12 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
-from ai_travel_assistant.long_term_memory import save_traveller_type
+from ai_travel_assistant.party import (
+    complete_party,
+    describe_group,
+    group_breakdown,
+    missing_group_fields,
+)
 from ai_travel_assistant.robustness import is_quota_exhausted
 from ai_travel_assistant.schemas import (
     PLAN_FIELDS,
@@ -61,8 +66,8 @@ TO_CLARIFY: Route = "clarify"
 TO_OFF_TOPIC: Route = "off_topic"
 
 # Questions asked in a row before the agent takes over with assumptions. One
-# per PLAN_FIELDS value, so "Plan me a trip" can be completed by four clicks.
-MAX_CLARIFICATIONS = 4
+# per PLAN_FIELDS value, so "Plan me a trip" can be completed by clicks alone.
+MAX_CLARIFICATIONS = len(PLAN_FIELDS)
 
 # The buttons shown under each question: (label, value saved in the trip).
 # The label is also the text of the traveller's reply when it is clicked.
@@ -81,10 +86,24 @@ QUICK_REPLIES: dict[str, tuple[tuple[str, Any], ...]] = {
         )
     ),
     "days": tuple((f"{n} day{'s' if n > 1 else ''}", n) for n in (1, 2, 3, 5, 7)),
-    "traveller_type": (
-        ("Sri Lankan / I live here", "local"),
-        ("Visiting from abroad", "foreign"),
+    "travellers": (
+        ("Just me", 1),
+        *((f"{n} people", n) for n in range(2, 7)),
     ),
+    # Citizenship, not residence: a foreigner living in Sri Lanka is foreign.
+    "citizenship": (
+        ("All Sri Lankan citizens", "local"),
+        ("All from a SAARC country", "saarc"),
+        ("All from other countries", "non_saarc"),
+        ("A mixed group", "mixed"),
+    ),
+    "children": (
+        ("No, all adults", 0),
+        ("1 child", 1),
+        ("2 children", 2),
+        ("3 children", 3),
+    ),
+    # "party" has no buttons: a mixed group is typed ("2 Sri Lankans, 1 Indian").
     "origin": (
         ("Colombo", "Colombo"),
         ("The airport (Katunayake)", "Katunayake"),
@@ -196,8 +215,12 @@ def _is_missing(value: object) -> bool:
     return value is None
 
 
-# Details about the traveller rather than the trip: a new destination keeps them.
-PERSON_FIELDS = ("traveller_type",)
+# Details about the travellers rather than the trip: a new destination keeps
+# them, so "Now plan Ella" does not ask the group size again.
+PERSON_FIELDS = ("travellers", "children", "citizenship", "party")
+
+# Fields where a bare number ("3") answers the question without the LLM.
+_NUMBER_FIELDS = ("days", "travellers", "children")
 
 
 def merge_trip(known: Mapping[str, object] | None, new: TripRequest) -> dict:
@@ -223,6 +246,9 @@ def merge_trip(known: Mapping[str, object] | None, new: TripRequest) -> dict:
                 fresh[name] = saved[name]
         return fresh
     merged = {**TripRequest().model_dump(), **saved}
+    # A new one-word citizenship replaces an earlier list of the travellers.
+    if not _is_missing(fresh.get("citizenship")) and _is_missing(fresh.get("party")):
+        merged["party"] = []
     for name, value in fresh.items():
         if _is_missing(value):
             continue
@@ -237,9 +263,23 @@ def merge_trip(known: Mapping[str, object] | None, new: TripRequest) -> dict:
 
 
 def missing_critical(trip: Mapping[str, object] | None) -> list[str]:
-    """The PLAN_FIELDS still missing from a trip, in the order they are asked."""
+    """The PLAN_FIELDS still missing from a trip, in the order they are asked.
+
+    citizenship, party and children are open only when party.py says so
+    (e.g. children is not asked of one traveller, party only of a mixed group).
+    """
     trip = trip or {}
-    return [name for name in PLAN_FIELDS if _is_missing(trip.get(name))]
+    open_group = set(missing_group_fields(trip))
+    return [
+        name
+        for name in PLAN_FIELDS
+        if (name in open_group)
+        or (name not in GROUP_FIELDS and _is_missing(trip.get(name)))
+    ]
+
+
+# The fields party.missing_group_fields() decides about.
+GROUP_FIELDS = ("citizenship", "party", "children")
 
 
 def _squash(text: str) -> str:
@@ -249,8 +289,9 @@ def _squash(text: str) -> str:
 def quick_reply_value(field: str | None, text: str) -> Any:
     """The value of a quick reply for `field`, or None if `text` is not one.
 
-    Exact button labels match (any case or spacing); for days a bare number
-    such as "3" matches too. Anything else goes to the understander.
+    Exact button labels match (any case or spacing); for days and travellers
+    a bare number such as "3" matches too. Anything else goes to the
+    understander.
     """
     if not field:
         return None
@@ -258,8 +299,9 @@ def quick_reply_value(field: str | None, text: str) -> Any:
     for label, value in QUICK_REPLIES.get(field, ()):
         if _squash(label) == wanted:
             return value
-    if field == "days" and re.fullmatch(r"[1-9]\d?", wanted):
-        return int(wanted)
+    if field in _NUMBER_FIELDS and re.fullmatch(r"\d{1,2}", wanted):
+        number = int(wanted)
+        return number if number or field == "children" else None
     return None
 
 
@@ -299,6 +341,8 @@ def describe_trip(trip: Mapping[str, object] | None) -> str:
     for name, value in (trip or {}).items():
         if _is_missing(value):
             continue
+        if name == "party":
+            continue  # shown as describe_group() text instead
         if isinstance(value, list):
             value = ", ".join(str(v) for v in value)
         parts.append(f"{name}={value}")
@@ -313,7 +357,7 @@ def make_understand_request_node(
 ) -> Callable[[Mapping], dict]:
     """Build the node that classifies the latest message and merges its details."""
 
-    def understand_request_node(state: Mapping, runtime: Any = None) -> dict:
+    def understand_request_node(state: Mapping) -> dict:
         messages = state.get("messages", [])
         index = _latest_human_index(messages)
         text = _text(messages[index]) if index is not None else ""
@@ -345,9 +389,17 @@ def make_understand_request_node(
         # A clicked button (or "3" after "How many days?"): no LLM call.
         field = state.get("clarification_field") if resumed else None
         value = quick_reply_value(field, text)
+        if (
+            field == "children"
+            and value is not None
+            and value > (known.get("travellers") or 0)
+        ):
+            value = None  # more children than travellers: let the LLM read it
         if value is not None:
             trip = {**TripRequest().model_dump(), **known, field: value}
-            return _plan_update(update, trip, "plan", state, runtime)
+            if field == "citizenship":
+                trip["party"] = []
+            return _plan_update(update, trip, "plan")
 
         context: dict = {}
         if question:
@@ -383,27 +435,15 @@ def make_understand_request_node(
 
         if intent in ("plan", "modify"):
             trip = merge_trip(known, understanding.trip)
-            return _plan_update(update, trip, intent, state, runtime)
+            return _plan_update(update, trip, intent)
         return {**update, "intent": intent, "missing_fields": []}
 
     return understand_request_node
 
 
-def _plan_update(
-    update: dict, trip: dict, intent: str, state: Mapping, runtime: Any
-) -> dict:
-    """Finish a plan or modify turn: fill in and save the traveller type,
-    then record the trip and what is still missing."""
-    saved_type = state.get("saved_traveller_type")
-    if _is_missing(trip.get("traveller_type")) and saved_type:
-        trip = {**trip, "traveller_type": saved_type}
-    new_type = trip.get("traveller_type")
-    store = getattr(runtime, "store", None)
-    if new_type and new_type != saved_type and store is not None:
-        context = getattr(runtime, "context", None)
-        user_id = getattr(context, "user_id", None) or "local"
-        save_traveller_type(store, user_id, new_type)
-        update["saved_traveller_type"] = new_type
+def _plan_update(update: dict, trip: dict, intent: str) -> dict:
+    """Finish a plan or modify turn: record the trip and what is still missing."""
+    trip = complete_party(trip)
     return {
         **update,
         "intent": intent,
@@ -437,10 +477,29 @@ def clarification_question(missing: Sequence[str], trip: Mapping | None) -> str:
         return "Where in Sri Lanka would you like to go?"
     if field == "days":
         return f"How many days would you like to spend in {place}?"
-    if field == "traveller_type":
+    if field == "travellers":
         return (
-            "Are you Sri Lankan or living in Sri Lanka, or visiting from abroad? "
-            "Entry fees and prices are often different for each."
+            "How many people are travelling, including you? Prices are per "
+            "person, so this sets the cost for your group."
+        )
+    if field == "citizenship":
+        return (
+            "What citizenship do the travellers have? Many sites charge Sri "
+            "Lankan, SAARC and other foreign citizens different ticket prices "
+            "(citizenship counts, not where you live)."
+        )
+    if field == "party":
+        return (
+            "Please list who is travelling, with each person's citizenship and "
+            "whether they are a child, e.g. '2 Sri Lankan adults, 1 Indian "
+            "adult, 1 German child'. For a dual citizen, say which passports "
+            "they hold."
+        )
+    if field == "children":
+        group = trip.get("travellers")
+        return (
+            f"How many of the {group} travellers are children? "
+            "Child ticket rules differ from site to site."
         )
     return f"Where will you start your trip to {place} from?"
 
@@ -499,29 +558,35 @@ def trip_prompt_note(trip: Mapping | None, missing: Sequence[str]) -> str:
             f" Current trip request, gathered from the conversation: {known}. "
             "Plan for these details."
         )
-    kind = (trip or {}).get("traveller_type")
-    if kind == "local":
+    group = describe_group(trip)
+    if group:
         note += (
-            " The traveller is Sri Lankan or lives in Sri Lanka: give prices in "
-            "LKR only and do not call convert_currency. Where the guide lists "
-            "separate local and foreigner prices, use the local one. Skip visa "
-            "advice."
+            f" Who is travelling: {group}. Ticket prices depend on citizenship: "
+            "use each category's own price and never one category's price for "
+            "another; if a category's price is not given, say it is not "
+            "verified. Give each cost per person and for the whole group, and "
+            "end the plan with the total for the group."
         )
-    elif kind == "foreign":
+    categories = {category for category, _, _ in group_breakdown(trip)}
+    if categories == {"local"}:
         note += (
-            " The traveller is visiting from abroad: give prices in LKR and USD. "
-            "Where the guide lists separate foreigner prices, use those. Add one "
-            "line asking them to check the current visa (ETA) rules on the "
-            "official Sri Lanka immigration website; give no visa details "
-            "yourself."
+            " Everyone is a Sri Lankan citizen: give prices in LKR only and do "
+            "not call convert_currency. Skip visa advice."
+        )
+    elif categories - {"local"}:
+        note += (
+            " Some travellers are foreign citizens: give their prices in LKR and "
+            "USD. Add one line asking them to check the current visa (ETA) rules "
+            "on the official Sri Lanka immigration website; give no visa "
+            "details yourself."
         )
     if missing:
         note += (
             f" Still unknown after asking: {', '.join(missing)}. If the "
             "destination is unknown, suggest places with search_destinations "
             "instead of choosing one; if the number of days is unknown, assume "
-            "3 days. If the traveller type is unknown, show prices in LKR and "
-            "USD and say that locals and foreigners often pay different fees. "
-            "State every assumption."
+            "3 days. If the group's citizenship is unknown, show prices in LKR "
+            "and USD, and say that Sri Lankan, SAARC and other foreign "
+            "visitors may pay different fees. State every assumption."
         )
     return note

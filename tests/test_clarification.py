@@ -23,15 +23,20 @@ from ai_travel_assistant.request_understanding import (
     route_after_understanding,
     trip_prompt_note,
 )
-from ai_travel_assistant.schemas import RequestUnderstanding, TripRequest
+from ai_travel_assistant.schemas import PartyMember, RequestUnderstanding, TripRequest
 
 # --- Helpers --------------------------------------------------------------------
 
 
-# The two details asked after the destination and days. Fakes in other test
+# The details asked after the destination and days. Fakes in other test
 # files add these to a plan request so that it is complete and runs in one turn;
 # the questions themselves are tested here and in test_clarification_graph.
-COMPLETE = {"origin": "Colombo", "traveller_type": "foreign"}
+COMPLETE = {
+    "origin": "Colombo",
+    "travellers": 2,
+    "citizenship": "non_saarc",
+    "children": 0,
+}
 
 
 class FakeUnderstander:
@@ -109,13 +114,17 @@ def test_same_destination_in_other_case_is_the_same_trip():
 FULL_TRIP = {
     "destination": "Galle",
     "days": 2,
-    "traveller_type": "foreign",
+    "travellers": 2,
+    "citizenship": "non_saarc",
+    "children": 0,
     "origin": "Colombo",
 }
+ALL_FIELDS = ["destination", "days", "travellers", "citizenship", "origin"]
 
 
 def test_missing_critical_treats_blank_as_missing():
-    assert missing_critical(None) == ["destination", "days", "traveller_type", "origin"]
+    # children is asked only once the group size is known (not of one person).
+    assert missing_critical(None) == ALL_FIELDS
     assert missing_critical({**FULL_TRIP, "destination": "  "}) == ["destination"]
     assert missing_critical(FULL_TRIP) == []
 
@@ -123,20 +132,45 @@ def test_missing_critical_treats_blank_as_missing():
 def test_missing_fields_come_in_the_order_they_are_asked():
     assert missing_critical({"days": 2, "origin": "Kandy"}) == [
         "destination",
-        "traveller_type",
+        "travellers",
+        "citizenship",
     ]
+    group_only = {k: v for k, v in FULL_TRIP.items() if k != "children"}
+    assert missing_critical(group_only) == ["children"]
+    assert missing_critical({**FULL_TRIP, "citizenship": "mixed"}) == ["party"]
 
 
-def test_a_new_destination_keeps_only_the_traveller_type():
+def test_a_listed_party_answers_every_group_question():
+    trip = {
+        **FULL_TRIP,
+        "citizenship": None,
+        "children": None,
+        "party": [{"nationality": "Sri Lankan", "age_group": "adult", "count": 2}],
+    }
+    assert missing_critical(trip) == []
+
+
+def test_a_new_destination_keeps_only_the_group():
     merged = merge_trip(FULL_TRIP, TripRequest(destination="Ella"))
     assert merged["destination"] == "Ella"
-    assert merged["traveller_type"] == "foreign"  # about the person
-    assert merged["origin"] is None  # about the old trip
-    assert merged["days"] is None
-    said = merge_trip(
-        FULL_TRIP, TripRequest(destination="Ella", traveller_type="local")
+    # About the people: kept.
+    assert (merged["travellers"], merged["citizenship"], merged["children"]) == (
+        2,
+        "non_saarc",
+        0,
     )
-    assert said["traveller_type"] == "local"
+    # About the old trip: dropped.
+    assert merged["origin"] is None
+    assert merged["days"] is None
+    said = merge_trip(FULL_TRIP, TripRequest(destination="Ella", citizenship="local"))
+    assert said["citizenship"] == "local"
+
+
+def test_a_single_citizenship_replaces_an_earlier_party_list():
+    listed = {**FULL_TRIP, "party": [{"nationality": "Indian", "count": 2}]}
+    merged = merge_trip(listed, TripRequest(citizenship="local"))
+    assert merged["party"] == []
+    assert merged["citizenship"] == "local"
 
 
 # --- Quick replies ---------------------------------------------------------------
@@ -150,8 +184,16 @@ def test_a_new_destination_keeps_only_the_traveller_type():
         ("days", "3 days", 3),
         ("days", "1 day", 1),
         ("days", "4", 4),  # a bare number is a day count
-        ("traveller_type", "Sri Lankan / I live here", "local"),
-        ("traveller_type", "visiting from abroad", "foreign"),
+        ("travellers", "Just me", 1),
+        ("travellers", "4 people", 4),
+        ("travellers", "8", 8),
+        ("citizenship", "All Sri Lankan citizens", "local"),
+        ("citizenship", "All from a SAARC country", "saarc"),
+        ("citizenship", "all from other countries", "non_saarc"),
+        ("citizenship", "A mixed group", "mixed"),
+        ("children", "No, all adults", 0),
+        ("children", "0", 0),
+        ("children", "2 children", 2),
         ("origin", "The airport (Katunayake)", "Katunayake"),
         ("origin", "Colombo", "Colombo"),
     ],
@@ -166,8 +208,11 @@ def test_a_quick_reply_is_read_without_the_llm(field, text, value):
         (None, "Kandy"),  # no question was asked
         ("destination", "Kandy and Ella"),
         ("days", "0"),
+        ("travellers", "0"),
         ("days", "about a week"),
-        ("traveller_type", "I'm from Germany"),  # typed: the understander reads it
+        ("citizenship", "We're from Germany"),  # typed: the understander reads it
+        ("citizenship", "Sri Lankan / I live here"),  # residence is not citizenship
+        ("party", "2 Sri Lankans"),  # a list is always read by the understander
         ("destination", "Colombo"),  # a start place, not a destination button
     ],
 )
@@ -175,10 +220,10 @@ def test_anything_else_is_not_a_quick_reply(field, text):
     assert ru.quick_reply_value(field, text) is None
 
 
-def test_every_asked_field_has_quick_replies():
+def test_every_asked_field_but_the_party_list_has_quick_replies():
     from ai_travel_assistant.schemas import PLAN_FIELDS
 
-    assert set(ru.QUICK_REPLIES) == set(PLAN_FIELDS)
+    assert set(ru.QUICK_REPLIES) == set(PLAN_FIELDS) - {"party"}
     for field, options in ru.QUICK_REPLIES.items():
         for label, value in options:
             assert ru.quick_reply_value(field, label) == value
@@ -225,9 +270,15 @@ def test_question_asks_for_the_first_missing_field_only():
     assert clarification_question(["days", "origin"], {"destination": "Galle"}) == (
         "How many days would you like to spend in Galle?"
     )
-    assert clarification_question(["traveller_type", "origin"], FULL_TRIP) == (
-        "Are you Sri Lankan or living in Sri Lanka, or visiting from abroad? "
-        "Entry fees and prices are often different for each."
+    assert clarification_question(["travellers"], FULL_TRIP).startswith(
+        "How many people are travelling, including you?"
+    )
+    citizenship = clarification_question(["citizenship", "origin"], FULL_TRIP)
+    assert "Sri Lankan, SAARC and other foreign" in citizenship
+    assert "citizenship counts, not where you live" in citizenship
+    assert "e.g. '2 Sri Lankan adults" in clarification_question(["party"], FULL_TRIP)
+    assert clarification_question(["children"], FULL_TRIP).startswith(
+        "How many of the 2 travellers are children?"
     )
     assert clarification_question(["origin"], {"destination": "Jaffna"}) == (
         "Where will you start your trip to Jaffna from?"
@@ -252,17 +303,33 @@ def test_trip_prompt_note():
     assert "assume 3 days" in trip_prompt_note({"destination": "Galle"}, ["days"])
 
 
-def test_the_prompt_note_follows_the_traveller_type():
-    local = trip_prompt_note({**FULL_TRIP, "traveller_type": "local"}, [])
-    assert "LKR only" in local
-    assert "do not call convert_currency" in local
-    assert "visa" in local.lower() and "Skip visa advice" in local
-    foreign = trip_prompt_note(FULL_TRIP, [])
-    assert "LKR and USD" in foreign
-    assert "foreigner prices" in foreign
-    assert "give no visa details" in foreign
-    unknown = trip_prompt_note({"destination": "Galle"}, ["traveller_type"])
-    assert "locals and foreigners often pay different fees" in unknown
+def test_the_prompt_note_names_each_category_and_asks_for_group_totals():
+    mixed = {
+        **FULL_TRIP,
+        "party": [
+            {"nationality": "Sri Lankan", "age_group": "adult", "count": 2},
+            {"nationality": "Indian", "age_group": "adult", "count": 1},
+            {"nationality": "German", "age_group": "adult", "count": 1},
+        ],
+    }
+    note = trip_prompt_note(mixed, [])
+    assert "2 Sri Lankan adults, 1 SAARC adult, 1 non-SAARC foreign adult" in note
+    assert "never one category's price for another" in note
+    assert "per person and for the whole group" in note
+    assert "LKR and USD" in note and "give no visa details" in note
+    assert "party=" not in note  # the raw list is never shown
+
+
+def test_an_all_local_group_gets_lkr_only():
+    note = trip_prompt_note({**FULL_TRIP, "citizenship": "local"}, [])
+    assert "LKR only" in note
+    assert "do not call convert_currency" in note
+    assert "Skip visa advice" in note
+
+
+def test_an_unknown_group_is_stated_as_an_assumption():
+    note = trip_prompt_note({"destination": "Galle"}, ["citizenship"])
+    assert "Sri Lankan, SAARC and other foreign visitors may pay different" in note
 
 
 def test_agent_answered_before_ignores_our_own_replies():
@@ -288,7 +355,7 @@ def test_understand_records_intent_trip_and_missing_fields():
     )
     assert update["intent"] == "plan"
     assert update["trip_request"]["destination"] == "Galle"
-    assert update["missing_fields"] == ["days", "traveller_type", "origin"]
+    assert update["missing_fields"] == ["days", "travellers", "citizenship", "origin"]
     assert update["clarification_rounds"] == 0
 
 
@@ -331,7 +398,7 @@ def test_a_reply_is_read_with_its_question_and_known_details():
     ]
     assert update["intent"] == "plan"  # a reply to our question is planning
     assert update["trip_request"]["days"] == 3
-    assert update["missing_fields"] == ["traveller_type", "origin"]
+    assert update["missing_fields"] == ["travellers", "citizenship", "origin"]
     assert update["clarification_context"] is None
     assert update["clarification_rounds"] == 1
 
@@ -364,7 +431,8 @@ def test_modify_without_any_plan_is_a_new_plan():
     assert update["missing_fields"] == [
         "destination",
         "days",
-        "traveller_type",
+        "travellers",
+        "citizenship",
         "origin",
     ]
 
@@ -459,15 +527,7 @@ def test_llm_understander_rejects_a_missing_reply():
         ru.make_llm_request_understander(model)("Plan me a trip")
 
 
-# --- Quick replies and the saved traveller type in the node -----------------------
-
-
-class FakeRuntime:
-    def __init__(self, store, user_id="ana"):
-        from ai_travel_assistant.tool_calling import AgentContext
-
-        self.store = store
-        self.context = AgentContext(user_id=user_id)
+# --- Quick replies and the group in the node -----------------------------------
 
 
 def asked(field: str, reply: str, trip: dict, **state) -> dict:
@@ -488,26 +548,50 @@ def asked(field: str, reply: str, trip: dict, **state) -> dict:
 def test_a_clicked_quick_reply_makes_no_understander_call():
     understander = FakeUnderstander({})
     update = make_understand_request_node(understander)(
-        asked("traveller_type", "Visiting from abroad", {"destination": "Galle"})
+        asked(
+            "citizenship",
+            "All from a SAARC country",
+            {"destination": "Galle", "travellers": 3},
+        )
     )
     assert understander.calls == []
     assert update["intent"] == "plan"
-    assert update["trip_request"]["traveller_type"] == "foreign"
+    assert update["trip_request"]["citizenship"] == "saarc"
     assert update["trip_request"]["destination"] == "Galle"
-    assert update["missing_fields"] == ["days", "origin"]
+    assert update["missing_fields"] == ["days", "children", "origin"]
     assert update["clarification_field"] is None
     assert update["clarification_rounds"] == 1
 
 
-def test_a_typed_reply_still_goes_to_the_understander():
+def test_a_typed_mixed_group_goes_to_the_understander():
+    party = [
+        PartyMember(nationality="Sri Lankan", count=2),
+        PartyMember(nationality="German", age_group="child"),
+    ]
     understander = FakeUnderstander(
-        {"We're from Germany": understood("plan", traveller_type="foreign")}
+        {"2 Sri Lankans and a German kid": understood("plan", party=party)}
     )
     update = make_understand_request_node(understander)(
-        asked("traveller_type", "We're from Germany", {"destination": "Galle"})
+        asked(
+            "party",
+            "2 Sri Lankans and a German kid",
+            {**FULL_TRIP, "citizenship": "mixed", "children": None},
+        )
     )
-    assert [text for text, _ in understander.calls] == ["We're from Germany"]
-    assert update["trip_request"]["traveller_type"] == "foreign"
+    assert [text for text, _ in understander.calls] == [
+        "2 Sri Lankans and a German kid"
+    ]
+    trip = update["trip_request"]
+    assert (trip["travellers"], trip["children"]) == (3, 1)  # from the list
+    assert update["missing_fields"] == []
+
+
+def test_more_children_than_travellers_is_not_taken_as_a_click():
+    understander = FakeUnderstander({"3": understood("question")})
+    make_understand_request_node(understander)(
+        asked("children", "3", {**FULL_TRIP, "children": None})
+    )
+    assert len(understander.calls) == 1  # 3 of 2 travellers: read it properly
 
 
 def test_a_button_label_on_a_fresh_message_is_not_a_quick_reply():
@@ -517,46 +601,3 @@ def test_a_button_label_on_a_fresh_message_is_not_a_quick_reply():
     )
     assert len(understander.calls) == 1  # no question pending: read it properly
     assert update["intent"] == "question"
-
-
-def test_the_saved_traveller_type_fills_a_new_trip():
-    from langgraph.store.memory import InMemoryStore
-
-    understander = FakeUnderstander(
-        {"Plan Galle": understood("plan", destination="Galle")}
-    )
-    update = make_understand_request_node(understander)(
-        {"messages": [HumanMessage("Plan Galle")], "saved_traveller_type": "local"},
-        FakeRuntime(InMemoryStore()),
-    )
-    assert update["trip_request"]["traveller_type"] == "local"
-    assert update["missing_fields"] == ["days", "origin"]
-    assert "saved_traveller_type" not in update  # nothing new to save
-
-
-def test_a_new_traveller_type_is_saved_for_later_conversations():
-    from langgraph.store.memory import InMemoryStore
-
-    from ai_travel_assistant.long_term_memory import (
-        load_preferences,
-        load_traveller_type,
-    )
-
-    store = InMemoryStore()
-    make_understand_request_node(FakeUnderstander({}))(
-        asked("traveller_type", "Sri Lankan / I live here", {"destination": "Galle"}),
-        FakeRuntime(store),
-    )
-    assert load_traveller_type(store, "ana") == "local"
-    assert load_preferences(store, "ana") == [
-        "Sri Lankan or lives in Sri Lanka (local prices)"
-    ]
-    assert load_traveller_type(store, "someone-else") is None
-
-
-def test_without_a_store_the_traveller_type_is_only_kept_in_the_trip():
-    update = make_understand_request_node(FakeUnderstander({}))(
-        asked("traveller_type", "Visiting from abroad", {"destination": "Galle"})
-    )
-    assert update["trip_request"]["traveller_type"] == "foreign"
-    assert "saved_traveller_type" not in update

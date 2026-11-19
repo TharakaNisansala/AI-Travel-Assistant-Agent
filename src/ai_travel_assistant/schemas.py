@@ -21,10 +21,36 @@ CRITICAL_FIELDS = ("destination", "days")
 
 # What the chat agent (request_understanding.py) asks for before planning, one
 # question at a time in this order. The Stage 4 workflow keeps CRITICAL_FIELDS.
-# traveller_type picks local or foreigner prices; origin is where day 1 starts.
-PLAN_FIELDS = ("destination", "days", "traveller_type", "origin")
+# travellers sets the group size; citizenship, party and children decide the
+# ticket category of each traveller (see party.py); origin is where day 1
+# starts. citizenship, party and children are asked only when party.py says
+# they are still open.
+PLAN_FIELDS = (
+    "destination",
+    "days",
+    "travellers",
+    "citizenship",
+    "party",
+    "children",
+    "origin",
+)
 
-TravellerType = Literal["local", "foreign"]
+
+class PartyMember(BaseModel):
+    """Some travellers who share a citizenship and an age group."""
+
+    nationality: str | None = Field(
+        default=None,
+        description=(
+            "Their citizenship as the traveller said it, e.g. 'Sri Lankan', "
+            "'Indian', 'German'. Null if not said. Write 'dual' for a dual "
+            "citizen. Citizenship, not the country they live in."
+        ),
+    )
+    age_group: Literal["adult", "child"] = Field(
+        default="adult", description="child only if they said so."
+    )
+    count: int = Field(default=1, ge=1, le=50)
 
 
 class TripRequest(BaseModel):
@@ -61,17 +87,37 @@ class TripRequest(BaseModel):
     travellers: int | None = Field(
         default=None,
         ge=1,
-        description="Number of people travelling. Null if not stated.",
+        description=(
+            "Number of people travelling, children included. 'Just me' is 1. "
+            "Null if not stated."
+        ),
+    )
+    children: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "How many of the travellers are children, only if the traveller "
+            "said so. Null otherwise."
+        ),
     )
     pace: Literal["relaxed", "moderate", "packed"] | None = Field(
         default=None,
         description="How busy each day should be, only if indicated.",
     )
-    traveller_type: TravellerType | None = Field(
+    citizenship: Literal["local", "saarc", "non_saarc", "mixed"] | None = Field(
         default=None,
         description=(
-            "local: a Sri Lankan citizen or someone living in Sri Lanka. "
-            "foreign: visiting from abroad. Null unless the traveller said so."
+            "Only when the WHOLE group shares one: local = Sri Lankan citizens, "
+            "saarc = citizens of another SAARC country, non_saarc = citizens of "
+            "any other country, mixed = several. Null if not said. Living in "
+            "Sri Lanka does not make a foreigner local."
+        ),
+    )
+    party: list[PartyMember] = Field(
+        default_factory=list,
+        description=(
+            "Who is travelling, only when the traveller listed citizenships, "
+            "e.g. '2 Sri Lankans and an Indian child'. Empty otherwise."
         ),
     )
     origin: str | None = Field(

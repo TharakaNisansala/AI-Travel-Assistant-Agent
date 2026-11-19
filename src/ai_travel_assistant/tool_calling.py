@@ -140,7 +140,6 @@ from ai_travel_assistant.long_term_memory import (
     PreferenceExtractor,
     clear_preferences,
     load_preferences,
-    load_traveller_type,
     looks_like_preference,
     make_llm_preference_extractor,
     save_preferences,
@@ -322,7 +321,6 @@ class AgentState(MessagesState):
     missing_fields: list[str]  # PLAN_FIELDS still missing for a plan
     clarification_context: str | None  # the question the latest reply answers
     clarification_field: str | None  # the field that question asks for
-    saved_traveller_type: str | None  # local/foreign from the Store, if known
     clarification_rounds: int  # questions asked in a row this turn
     itinerary: dict  # Stage 8: the last checked itinerary (JSON-ready data)
 
@@ -457,12 +455,8 @@ def make_fallback_node(
 
 
 def load_memory_node(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
-    """Read the traveller's preferences and type from the Store (no LLM call)."""
-    user_id = _user_id(runtime)
-    return {
-        "user_prefs": load_preferences(runtime.store, user_id),
-        "saved_traveller_type": load_traveller_type(runtime.store, user_id),
-    }
+    """Read the traveller's preferences from the Store (no LLM call)."""
+    return {"user_prefs": load_preferences(runtime.store, _user_id(runtime))}
 
 
 def make_save_memory_node(

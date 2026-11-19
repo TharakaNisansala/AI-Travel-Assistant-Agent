@@ -45,14 +45,24 @@ Rules:
 - Use null for any field the traveller did not mention.
 - Convert spoken durations to days: "a weekend" = 2, "a week" = 7,
   "a fortnight" = 14, "N nights" = N + 1.
-- "my family of four" means 4 travellers; "we two" or "my partner and I" means 2.
+- "my family of four" means 4 travellers; "we two" or "my partner and I" means 2;
+  "just me" or "alone" means 1. travellers counts children too: "2 adults and
+  a child" is travellers 3 and children 1. Set children only when stated.
 - For an approximate amount ("around 3 days", "maybe 4"), use that number.
 - origin is where the trip starts ("from Colombo", "starting in Kandy"). If
   they start at the international airport ("we land at the airport"), use
   "Katunayake". The destination is never the origin.
-- traveller_type is "local" if they say they are Sri Lankan or live in Sri
-  Lanka, and "foreign" if they are visiting from another country. Otherwise
-  null; do not guess it from the language or the name.
+- Ticket prices depend on CITIZENSHIP, never on where someone lives: "a
+  German living in Colombo" is German. Never guess a citizenship from the
+  language, a name or the word "tourist".
+- citizenship is for a group that is all one kind: "we are Sri Lankan" is
+  local; "we're Indian" is saarc (other SAARC countries: Afghanistan,
+  Bangladesh, Bhutan, India, Maldives, Nepal, Pakistan); "we're from the UK"
+  is non_saarc; a group with different citizenships is mixed.
+- party lists the travellers when the message names citizenships with counts
+  or ages: "2 Sri Lankan adults, an Indian friend and a German child" is
+  [{Sri Lankan, adult, 2}, {Indian, adult, 1}, {German, child, 1}]. For a
+  dual citizen write nationality "dual". Leave party empty otherwise.
 
 Follow-up replies:
 - The message may start with the question the assistant just asked and the trip
@@ -62,10 +72,10 @@ Follow-up replies:
 - Read a short reply as the answer to that question. After "How many days...?",
   "3", "maybe 4", "five" or "a week" give days. After "Where ... would you like
   to go?", a place name like "Kandy" gives the destination. After "Where will
-  you start ...?", a place name gives the origin, not the destination. After a
-  question about living in Sri Lanka or visiting from abroad, "Sri Lankan",
-  "I live here" or "local" give local; "tourist", "from the UK" or "visiting"
-  give foreign.
+  you start ...?", a place name gives the origin, not the destination. After
+  "How many people are travelling...?", a number gives travellers. After "How
+  many ... are children?", a number gives children. After a question about
+  citizenship, fill citizenship or party.
 - A number means days only if the question asked for the trip length or the
   traveller says it is a duration. "We are 3" is travellers, not days. If the
   reply does not answer the question, leave the asked-for fields null.

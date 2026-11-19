@@ -153,8 +153,12 @@ def test_quick_replies_answer_every_question_then_the_plan_comes(page):
     click_quick_reply(app, "Ella")
     assert texts(app)[-1] == "How many days would you like to spend in Ella?"
     click_quick_reply(app, "2 days")
-    assert texts(app)[-1].startswith("Are you Sri Lankan")
-    click_quick_reply(app, "Visiting from abroad")
+    assert texts(app)[-1].startswith("How many people are travelling")
+    click_quick_reply(app, "3 people")
+    assert texts(app)[-1].startswith("What citizenship do the travellers have?")
+    click_quick_reply(app, "All Sri Lankan citizens")
+    assert texts(app)[-1].startswith("How many of the 3 travellers are children?")
+    click_quick_reply(app, "No, all adults")
     assert texts(app)[-1] == "Where will you start your trip to Ella from?"
     click_quick_reply(app, "The airport (Katunayake)")
 
