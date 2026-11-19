@@ -45,6 +45,9 @@ DATA_SOURCES = (
 USER_AVATAR = "🧳"
 ASSISTANT_AVATAR = "🌴"
 
+# A card whose "message" is this opens the province/district picker instead.
+WEATHER_PICKER = ""
+
 # (title, subtitle, the message it sends)
 SUGGESTIONS: tuple[tuple[str, str, str], ...] = (
     # First: the easiest start. The agent then asks each detail with buttons.
@@ -57,8 +60,8 @@ SUGGESTIONS: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "Weather check",
-        "What to expect this week",
-        "What's the weather in Nuwara Eliya?",
+        "Pick a province, then a district",
+        WEATHER_PICKER,
     ),
 )
 

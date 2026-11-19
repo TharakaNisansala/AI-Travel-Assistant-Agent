@@ -16,6 +16,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from ai_travel_assistant import llm_basics, tool_calling, web_app, web_ui  # noqa: E402
 from ai_travel_assistant.request_understanding import QUICK_REPLIES  # noqa: E402
+from ai_travel_assistant.sri_lanka_places import PROVINCES  # noqa: E402
 from tests.test_clarification import FakeUnderstander  # noqa: E402
 from tests.test_itinerary_graph import (  # noqa: E402
     TODAY,
@@ -215,3 +216,44 @@ def test_a_missing_key_is_reported_on_the_page(monkeypatch, tmp_path):
     assert "Configuration error: Missing GEMINI_API_KEY." in app.error[0].value
     assert len(app.chat_input) == 0
     st.cache_resource.clear()
+
+
+def picker_buttons(app, kind: str) -> list:
+    return [b for b in app.button if (b.key or "").startswith(f"{kind}-")]
+
+
+def test_the_weather_card_opens_provinces_then_districts_without_the_llm(page):
+    model = streaming("Light rain in Badulla.")
+    app = page(model)
+    [card] = [b for b in suggestion_buttons(app) if "Weather" in b.label]
+    card.click().run()
+    assert not app.exception, app.exception
+    assert {b.label for b in picker_buttons(app, "province")} == set(PROVINCES)
+    assert texts(app) == []  # nothing sent yet
+
+    [uva] = [b for b in picker_buttons(app, "province") if b.label == "Uva"]
+    uva.click().run()
+    assert [b.label for b in picker_buttons(app, "district")] == [
+        "Badulla",
+        "Monaragala",
+    ]
+    assert model.calls == []  # no LLM call while picking
+
+    [badulla] = [b for b in picker_buttons(app, "district") if b.label == "Badulla"]
+    badulla.click().run()
+    assert not app.exception, app.exception
+    shown = texts(app)
+    assert shown[0] == "What's the weather in Badulla?"
+    assert shown[-1] == "Light rain in Badulla."
+    assert picker_buttons(app, "province") == picker_buttons(app, "district") == []
+
+
+def test_the_picker_goes_back_to_provinces_and_to_the_cards(page):
+    app = page(streaming())
+    [card] = [b for b in suggestion_buttons(app) if "Weather" in b.label]
+    card.click().run()
+    picker_buttons(app, "province")[0].click().run()  # Western
+    app.button(key="picker-back").click().run()
+    assert len(picker_buttons(app, "province")) == 9
+    app.button(key="picker-back").click().run()
+    assert len(suggestion_buttons(app)) == len(web_ui.SUGGESTIONS)

@@ -23,6 +23,9 @@ What this file demonstrates:
   5. Quick replies. While the agent waits for an answer, the page shows the
      asked field's QUICK_REPLIES as buttons. A click sends the label as the
      reply, which request_understanding reads without an LLM call.
+  6. A picker that never calls the LLM. The weather card opens the 9
+     provinces, a province opens its districts (sri_lanka_places.py), and only
+     the chosen district is sent, as one plain question.
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ from langgraph.graph.state import CompiledStateGraph
 from ai_travel_assistant import web_ui
 from ai_travel_assistant.long_term_memory import sqlite_store
 from ai_travel_assistant.request_understanding import QUICK_REPLIES
+from ai_travel_assistant.sri_lanka_places import PROVINCES, weather_question
 from ai_travel_assistant.streaming import (
     Step,
     Token,
@@ -188,8 +192,43 @@ def suggestions() -> str | None:
         ):
             label = f"**{title}**  \n{subtitle}"
             if column.button(label, key=f"suggest-{title}", use_container_width=True):
+                if prompt == web_ui.WEATHER_PICKER:
+                    st.session_state.picker = "province"
+                    st.rerun()
                 picked = prompt
     return picked
+
+
+def weather_picker() -> str | None:
+    """Province buttons, then that province's districts; returns the question.
+
+    Kept in st.session_state between reruns: picker is "province" or the
+    chosen province's name. No LLM call until a district is picked.
+    """
+    state = st.session_state
+    columns_per_row = 3
+    if state.picker == "province":
+        st.markdown("#### 🌦️ Weather: pick a province")
+        options = list(PROVINCES)
+    else:
+        st.markdown(f"#### 🌦️ Weather in {state.picker} Province: pick a district")
+        options = list(PROVINCES[state.picker])
+    columns = st.columns(columns_per_row)
+    for i, name in enumerate(options):
+        kind = "province" if state.picker == "province" else "district"
+        if columns[i % columns_per_row].button(
+            name, key=f"{kind}-{name}", use_container_width=True
+        ):
+            if kind == "province":
+                state.picker = name
+                st.rerun()
+            state.picker = None
+            return weather_question(name)
+    back = "⬅️ All provinces" if state.picker != "province" else "⬅️ Back"
+    if st.button(back, key="picker-back"):
+        state.picker = "province" if state.picker != "province" else None
+        st.rerun()
+    return None
 
 
 def quick_replies(field: str | None) -> str | None:
@@ -253,10 +292,13 @@ def main() -> None:
     if waiting:
         st.info("The assistant is waiting for your answer to its question.")
 
+    state.setdefault("picker", None)
     if waiting:
         picked = quick_replies(values.get("clarification_field"))
+    elif history:
+        picked = None
     else:
-        picked = None if history else suggestions()
+        picked = weather_picker() if state.picker else suggestions()
     if prompt := st.chat_input(PLACEHOLDER) or picked:
         with st.chat_message("user", avatar=web_ui.USER_AVATAR):
             st.markdown(prompt)
