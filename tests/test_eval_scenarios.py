@@ -63,9 +63,12 @@ def test_understanding_checks_that_unstated_fields_stay_empty(scenarios):
 
 def test_plans_require_the_itinerary_check_tools(scenarios):
     # The YAML anchor and the Stage 4 constant must not drift apart.
+    # A plan that asks for hotels may also require suggest_hotels, nothing else.
     for s in scenarios:
         if s.category in ("itinerary", "fault"):
-            assert set(s.expect.required_tools) == set(REQUIRED_TOOLS), s.id
+            required = set(s.expect.required_tools)
+            assert set(REQUIRED_TOOLS) <= required, s.id
+            assert required - set(REQUIRED_TOOLS) <= {"suggest_hotels"}, s.id
 
 
 def test_fault_scenarios_each_break_a_different_tool(scenarios):
