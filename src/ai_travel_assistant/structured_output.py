@@ -55,10 +55,11 @@ Rules:
 - Ticket prices depend on CITIZENSHIP, never on where someone lives: "a
   German living in Colombo" is German. Never guess a citizenship from the
   language, a name or the word "tourist".
-- citizenship is for a group that is all one kind: "we are Sri Lankan" is
-  local; "we're Indian" is saarc (other SAARC countries: Afghanistan,
-  Bangladesh, Bhutan, India, Maldives, Nepal, Pakistan); "we're from the UK"
-  is non_saarc; a group with different citizenships is mixed.
+- nationality is the citizenship a whole group shares, in the traveller's
+  words: "we are Sri Lankan" is "Sri Lankan", "just me, I'm a Maldivian
+  citizen" is "Maldivian". Never turn it into a category yourself.
+- citizenship is only "mixed", for a group with different citizenships
+  that are not listed one by one; otherwise null.
 - party lists the travellers when the message names citizenships with counts
   or ages: "2 Sri Lankan adults, an Indian friend and a German child" is
   [{Sri Lankan, adult, 2}, {Indian, adult, 1}, {German, child, 1}]. For a

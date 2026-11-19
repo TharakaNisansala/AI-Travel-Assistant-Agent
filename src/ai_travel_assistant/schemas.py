@@ -104,13 +104,21 @@ class TripRequest(BaseModel):
         default=None,
         description="How busy each day should be, only if indicated.",
     )
+    nationality: str | None = Field(
+        default=None,
+        description=(
+            "The citizenship the WHOLE group shares, as the traveller said it, "
+            "e.g. 'Sri Lankan', 'Maldivian', 'German'. Null if not said or if "
+            "the group has several citizenships. Citizenship, not the country "
+            "they live in."
+        ),
+    )
     citizenship: Literal["local", "saarc", "non_saarc", "mixed"] | None = Field(
         default=None,
         description=(
-            "Only when the WHOLE group shares one: local = Sri Lankan citizens, "
-            "saarc = citizens of another SAARC country, non_saarc = citizens of "
-            "any other country, mixed = several. Null if not said. Living in "
-            "Sri Lanka does not make a foreigner local."
+            "mixed if the group has several citizenships; otherwise null. Do "
+            "not classify countries yourself: put the nationality in "
+            "'nationality' and the code works out the ticket category."
         ),
     )
     party: list[PartyMember] = Field(

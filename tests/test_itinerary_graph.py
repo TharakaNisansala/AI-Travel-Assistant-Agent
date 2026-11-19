@@ -504,7 +504,7 @@ class Understander:
                     days=2,
                     origin="Colombo",
                     travellers=2,
-                    citizenship="non_saarc",
+                    nationality="British",
                     children=0,
                 ),
             ),

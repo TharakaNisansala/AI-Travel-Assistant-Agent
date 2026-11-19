@@ -103,7 +103,7 @@ def standard_understander() -> FakeUnderstander:
                 days=3,
                 origin="Kandy",
                 travellers=1,
-                citizenship="local",
+                nationality="Sri Lankan",
             ),
         )
         .add("Where can I surf?", understood("question"))

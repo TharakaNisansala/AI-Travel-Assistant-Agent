@@ -62,6 +62,7 @@ def test_schema_descriptions_reach_the_json_schema():
         "travellers",
         "pace",
         "children",
+        "nationality",
         "citizenship",
         "party",
         "origin",

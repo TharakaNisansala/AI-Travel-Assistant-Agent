@@ -34,7 +34,7 @@ from ai_travel_assistant.schemas import PartyMember, RequestUnderstanding, TripR
 COMPLETE = {
     "origin": "Colombo",
     "travellers": 2,
-    "citizenship": "non_saarc",
+    "nationality": "British",  # the code maps it to non_saarc
     "children": 0,
 }
 
@@ -601,3 +601,47 @@ def test_a_button_label_on_a_fresh_message_is_not_a_quick_reply():
     )
     assert len(understander.calls) == 1  # no question pending: read it properly
     assert update["intent"] == "question"
+
+
+# --- The ticket category is decided by code, not the LLM ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("said", "category"),
+    [
+        ({"nationality": "Maldivian"}, "saarc"),  # the live bug: LLM said non_saarc
+        ({"nationality": "Maldivian", "citizenship": "non_saarc"}, "saarc"),
+        ({"nationality": "Sri Lankan"}, "local"),
+        ({"nationality": "German"}, "non_saarc"),
+        ({"citizenship": "local"}, None),  # a category with no nationality: ask
+        ({"nationality": "tourist"}, None),  # unclear: ask
+        ({"citizenship": "mixed"}, "mixed"),
+        # "mixed" that contradicts the rest is dropped (seen live).
+        ({"citizenship": "mixed", "nationality": "Sri Lankan"}, "local"),
+        ({"citizenship": "mixed", "travellers": 1}, None),
+        (
+            {
+                "citizenship": "mixed",
+                "party": [PartyMember(nationality="Sri Lankan")],
+            },
+            None,  # the party list itself decides
+        ),
+    ],
+)
+def test_the_code_maps_a_nationality_to_its_ticket_category(said, category):
+    trip = ru.code_decides_citizenship(TripRequest(**said))
+    assert trip.citizenship == category
+
+
+def test_a_typed_nationality_reaches_the_trip_as_its_category():
+    understander = FakeUnderstander(
+        {
+            "just me, I'm Maldivian": understood(
+                "plan", travellers=1, nationality="Maldivian", citizenship="non_saarc"
+            )
+        }
+    )
+    update = make_understand_request_node(understander)(
+        asked("citizenship", "just me, I'm Maldivian", {"destination": "Galle"})
+    )
+    assert update["trip_request"]["citizenship"] == "saarc"

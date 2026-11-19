@@ -45,6 +45,7 @@ from ai_travel_assistant.party import (
     describe_group,
     group_breakdown,
     missing_group_fields,
+    nationality_group,
 )
 from ai_travel_assistant.robustness import is_quota_exhausted
 from ai_travel_assistant.schemas import (
@@ -217,7 +218,7 @@ def _is_missing(value: object) -> bool:
 
 # Details about the travellers rather than the trip: a new destination keeps
 # them, so "Now plan Ella" does not ask the group size again.
-PERSON_FIELDS = ("travellers", "children", "citizenship", "party")
+PERSON_FIELDS = ("travellers", "children", "nationality", "citizenship", "party")
 
 # Fields where a bare number ("3") answers the question without the LLM.
 _NUMBER_FIELDS = ("days", "travellers", "children")
@@ -434,11 +435,34 @@ def make_understand_request_node(
             intent = "plan"
 
         if intent in ("plan", "modify"):
-            trip = merge_trip(known, understanding.trip)
+            trip = merge_trip(known, code_decides_citizenship(understanding.trip))
             return _plan_update(update, trip, intent)
         return {**update, "intent": intent, "missing_fields": []}
 
     return understand_request_node
+
+
+def code_decides_citizenship(trip: TripRequest) -> TripRequest:
+    """Keep the LLM to words; the ticket category comes from party.py.
+
+    The LLM may only say "mixed". A category it chose itself is dropped, and
+    a named nationality ("Maldivian") is mapped by the fixed SAARC list. An
+    unclear nationality ("tourist") sets nothing, so the agent asks.
+    "mixed" is dropped when it contradicts the rest: a shared nationality, a
+    listed party, or a single traveller (seen live: "just me; I'm Sri
+    Lankan" came back as mixed).
+    """
+    mixed = (
+        trip.citizenship == "mixed"
+        and not trip.nationality
+        and not trip.party
+        and trip.travellers != 1
+    )
+    citizenship = "mixed" if mixed else None
+    if trip.nationality and citizenship is None:
+        group = nationality_group(trip.nationality)
+        citizenship = None if group == "unknown" else group
+    return trip.model_copy(update={"citizenship": citizenship})
 
 
 def _plan_update(update: dict, trip: dict, intent: str) -> dict:

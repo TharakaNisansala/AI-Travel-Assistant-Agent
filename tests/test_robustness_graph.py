@@ -393,7 +393,7 @@ def plan_understander(text, **context):
                 days=2,
                 origin="Colombo",
                 travellers=1,
-                citizenship="local",
+                nationality="Sri Lankan",
             ),
         ),
         "Hello again": RequestUnderstanding(intent="question"),
