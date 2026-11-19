@@ -145,6 +145,33 @@ def save_preferences(
     return added
 
 
+# Local or foreign is saved next to the preferences, under one fixed key, so
+# it shows in the saved-preferences list (and in the agent's prompt) and
+# "forget my preferences" clears it too. A new answer replaces the old one.
+TRAVELLER_TYPE_KEY = "traveller-type"
+TRAVELLER_TYPE_TEXT = {
+    "local": "Sri Lankan or lives in Sri Lanka (local prices)",
+    "foreign": "visits from abroad (foreigner prices)",
+}
+
+
+def save_traveller_type(store: BaseStore, user_id: str, kind: str) -> None:
+    """Remember whether the traveller is local or foreign."""
+    if kind not in TRAVELLER_TYPE_TEXT:
+        raise ValueError(f"unknown traveller type: {kind!r}")
+    store.put(
+        preferences_namespace(user_id),
+        TRAVELLER_TYPE_KEY,
+        {"text": TRAVELLER_TYPE_TEXT[kind], "traveller_type": kind},
+    )
+
+
+def load_traveller_type(store: BaseStore, user_id: str) -> str | None:
+    """'local', 'foreign', or None if the traveller never said."""
+    item = store.get(preferences_namespace(user_id), TRAVELLER_TYPE_KEY)
+    return item.value.get("traveller_type") if item is not None else None
+
+
 def clear_preferences(store: BaseStore, user_id: str) -> int:
     """Delete every saved preference of a traveller; return how many."""
     namespace = preferences_namespace(user_id)

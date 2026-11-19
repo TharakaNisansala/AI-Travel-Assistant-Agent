@@ -26,7 +26,7 @@ from ai_travel_assistant.evals.run import (
 )
 from ai_travel_assistant.evals.scenarios import Scenario
 from ai_travel_assistant.evals.scorers import score_record
-from tests.test_clarification import FakeUnderstander, understood
+from tests.test_clarification import COMPLETE, FakeUnderstander, understood
 from tests.test_itinerary_graph import (
     TODAY,
     gather,
@@ -61,12 +61,14 @@ ITIN = scenario(
 )
 
 ANSWERS = {
-    "Plan 2 days in Ella.": understood("plan", destination="Ella", days=2),
-    "Plan 2 days in Jaffna.": understood("plan", destination="Jaffna", days=2),
+    "Plan 2 days in Ella.": understood("plan", destination="Ella", days=2, **COMPLETE),
+    "Plan 2 days in Jaffna.": understood(
+        "plan", destination="Jaffna", days=2, **COMPLETE
+    ),
     "Help me plan a holiday.": understood("plan"),
     "Tell me a joke.": understood("off_topic"),
     "Plan me a trip.": understood("plan"),
-    "Ella, 2 days.": understood("plan", destination="Ella", days=2),
+    "Ella, 2 days.": understood("plan", destination="Ella", days=2, **COMPLETE),
     "Make day 2 easier.": understood("modify"),
 }
 

@@ -387,7 +387,10 @@ def plan_understander(text, **context):
     answers = {
         "Plan me a trip": RequestUnderstanding(intent="plan"),
         "Galle, 2 days": RequestUnderstanding(
-            intent="plan", trip=TripRequest(destination="Galle", days=2)
+            intent="plan",
+            trip=TripRequest(
+                destination="Galle", days=2, origin="Colombo", traveller_type="local"
+            ),
         ),
         "Hello again": RequestUnderstanding(intent="question"),
     }

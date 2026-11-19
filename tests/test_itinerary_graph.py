@@ -496,7 +496,13 @@ class Understander:
         answers = {
             "Plan me a trip": RequestUnderstanding(intent="plan"),
             "Ella, 2 days": RequestUnderstanding(
-                intent="plan", trip=TripRequest(destination="Ella", days=2)
+                intent="plan",
+                trip=TripRequest(
+                    destination="Ella",
+                    days=2,
+                    origin="Colombo",
+                    traveller_type="foreign",
+                ),
             ),
             "Make day 2 easier": RequestUnderstanding(intent="modify"),
         }

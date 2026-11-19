@@ -28,6 +28,12 @@ from ai_travel_assistant.schemas import RequestUnderstanding, TripRequest
 # --- Helpers --------------------------------------------------------------------
 
 
+# The two details asked after the destination and days. Fakes in other test
+# files add these to a plan request so that it is complete and runs in one turn;
+# the questions themselves are tested here and in test_clarification_graph.
+COMPLETE = {"origin": "Colombo", "traveller_type": "foreign"}
+
+
 class FakeUnderstander:
     """Looks the message up in a table and records every call."""
 
@@ -100,10 +106,82 @@ def test_same_destination_in_other_case_is_the_same_trip():
     assert merged["days"] == 3
 
 
+FULL_TRIP = {
+    "destination": "Galle",
+    "days": 2,
+    "traveller_type": "foreign",
+    "origin": "Colombo",
+}
+
+
 def test_missing_critical_treats_blank_as_missing():
-    assert missing_critical(None) == ["destination", "days"]
-    assert missing_critical({"destination": "  ", "days": 2}) == ["destination"]
-    assert missing_critical({"destination": "Galle", "days": 2}) == []
+    assert missing_critical(None) == ["destination", "days", "traveller_type", "origin"]
+    assert missing_critical({**FULL_TRIP, "destination": "  "}) == ["destination"]
+    assert missing_critical(FULL_TRIP) == []
+
+
+def test_missing_fields_come_in_the_order_they_are_asked():
+    assert missing_critical({"days": 2, "origin": "Kandy"}) == [
+        "destination",
+        "traveller_type",
+    ]
+
+
+def test_a_new_destination_keeps_only_the_traveller_type():
+    merged = merge_trip(FULL_TRIP, TripRequest(destination="Ella"))
+    assert merged["destination"] == "Ella"
+    assert merged["traveller_type"] == "foreign"  # about the person
+    assert merged["origin"] is None  # about the old trip
+    assert merged["days"] is None
+    said = merge_trip(
+        FULL_TRIP, TripRequest(destination="Ella", traveller_type="local")
+    )
+    assert said["traveller_type"] == "local"
+
+
+# --- Quick replies ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field", "text", "value"),
+    [
+        ("destination", "Kandy", "Kandy"),
+        ("destination", "  nuwara   ELIYA ", "Nuwara Eliya"),
+        ("days", "3 days", 3),
+        ("days", "1 day", 1),
+        ("days", "4", 4),  # a bare number is a day count
+        ("traveller_type", "Sri Lankan / I live here", "local"),
+        ("traveller_type", "visiting from abroad", "foreign"),
+        ("origin", "The airport (Katunayake)", "Katunayake"),
+        ("origin", "Colombo", "Colombo"),
+    ],
+)
+def test_a_quick_reply_is_read_without_the_llm(field, text, value):
+    assert ru.quick_reply_value(field, text) == value
+
+
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [
+        (None, "Kandy"),  # no question was asked
+        ("destination", "Kandy and Ella"),
+        ("days", "0"),
+        ("days", "about a week"),
+        ("traveller_type", "I'm from Germany"),  # typed: the understander reads it
+        ("destination", "Colombo"),  # a start place, not a destination button
+    ],
+)
+def test_anything_else_is_not_a_quick_reply(field, text):
+    assert ru.quick_reply_value(field, text) is None
+
+
+def test_every_asked_field_has_quick_replies():
+    from ai_travel_assistant.schemas import PLAN_FIELDS
+
+    assert set(ru.QUICK_REPLIES) == set(PLAN_FIELDS)
+    for field, options in ru.QUICK_REPLIES.items():
+        for label, value in options:
+            assert ru.quick_reply_value(field, label) == value
 
 
 # --- The router -----------------------------------------------------------------
@@ -137,25 +215,33 @@ def test_route_after_understanding(state, route):
 # --- Questions and prompt notes -------------------------------------------------
 
 
-def test_question_asks_only_for_what_is_missing():
+def test_question_asks_for_the_first_missing_field_only():
     assert clarification_question(["destination", "days"], {}) == (
-        "Where in Sri Lanka would you like to go, and for how many days?"
+        "Where in Sri Lanka would you like to go?"
     )
     assert clarification_question(["destination"], {"days": 3}) == (
         "Where in Sri Lanka would you like to spend your 3 days?"
     )
-    assert clarification_question(["days"], {"destination": "Galle"}) == (
+    assert clarification_question(["days", "origin"], {"destination": "Galle"}) == (
         "How many days would you like to spend in Galle?"
+    )
+    assert clarification_question(["traveller_type", "origin"], FULL_TRIP) == (
+        "Are you Sri Lankan or living in Sri Lanka, or visiting from abroad? "
+        "Entry fees and prices are often different for each."
+    )
+    assert clarification_question(["origin"], {"destination": "Jaffna"}) == (
+        "Where will you start your trip to Jaffna from?"
     )
 
 
 def test_ask_clarification_writes_a_tagged_question_and_counts_it():
     update = ask_clarification_node(
-        {"missing_fields": ["days"], "trip_request": {"destination": "Galle"}}
+        {"missing_fields": ["days", "origin"], "trip_request": {"destination": "Galle"}}
     )
     [question] = update["messages"]
     assert question.name == ru.CLARIFICATION_NAME
     assert update["clarification_rounds"] == 1
+    assert update["clarification_field"] == "days"
 
 
 def test_trip_prompt_note():
@@ -164,6 +250,19 @@ def test_trip_prompt_note():
     assert "destination=Galle, days=2" in note
     assert "budget" not in note
     assert "assume 3 days" in trip_prompt_note({"destination": "Galle"}, ["days"])
+
+
+def test_the_prompt_note_follows_the_traveller_type():
+    local = trip_prompt_note({**FULL_TRIP, "traveller_type": "local"}, [])
+    assert "LKR only" in local
+    assert "do not call convert_currency" in local
+    assert "visa" in local.lower() and "Skip visa advice" in local
+    foreign = trip_prompt_note(FULL_TRIP, [])
+    assert "LKR and USD" in foreign
+    assert "foreigner prices" in foreign
+    assert "give no visa details" in foreign
+    unknown = trip_prompt_note({"destination": "Galle"}, ["traveller_type"])
+    assert "locals and foreigners often pay different fees" in unknown
 
 
 def test_agent_answered_before_ignores_our_own_replies():
@@ -189,7 +288,7 @@ def test_understand_records_intent_trip_and_missing_fields():
     )
     assert update["intent"] == "plan"
     assert update["trip_request"]["destination"] == "Galle"
-    assert update["missing_fields"] == ["days"]
+    assert update["missing_fields"] == ["days", "traveller_type", "origin"]
     assert update["clarification_rounds"] == 0
 
 
@@ -232,7 +331,7 @@ def test_a_reply_is_read_with_its_question_and_known_details():
     ]
     assert update["intent"] == "plan"  # a reply to our question is planning
     assert update["trip_request"]["days"] == 3
-    assert update["missing_fields"] == []
+    assert update["missing_fields"] == ["traveller_type", "origin"]
     assert update["clarification_context"] is None
     assert update["clarification_rounds"] == 1
 
@@ -262,7 +361,12 @@ def test_modify_without_any_plan_is_a_new_plan():
         {"messages": [HumanMessage("Make it longer")]}
     )
     assert update["intent"] == "plan"
-    assert update["missing_fields"] == ["destination", "days"]
+    assert update["missing_fields"] == [
+        "destination",
+        "days",
+        "traveller_type",
+        "origin",
+    ]
 
 
 def test_modify_after_a_plan_tells_the_understander_and_skips_clarifying():
@@ -353,3 +457,106 @@ def test_llm_understander_rejects_a_missing_reply():
     model = StructuredFake(messages=iter([]), result=None, seen=[])
     with pytest.raises(ValueError):
         ru.make_llm_request_understander(model)("Plan me a trip")
+
+
+# --- Quick replies and the saved traveller type in the node -----------------------
+
+
+class FakeRuntime:
+    def __init__(self, store, user_id="ana"):
+        from ai_travel_assistant.tool_calling import AgentContext
+
+        self.store = store
+        self.context = AgentContext(user_id=user_id)
+
+
+def asked(field: str, reply: str, trip: dict, **state) -> dict:
+    return {
+        "messages": [
+            HumanMessage("Plan me a trip"),
+            AIMessage("The question", name=ru.CLARIFICATION_NAME),
+            HumanMessage(reply),
+        ],
+        "clarification_context": "The question",
+        "clarification_field": field,
+        "clarification_rounds": 1,
+        "trip_request": trip,
+        **state,
+    }
+
+
+def test_a_clicked_quick_reply_makes_no_understander_call():
+    understander = FakeUnderstander({})
+    update = make_understand_request_node(understander)(
+        asked("traveller_type", "Visiting from abroad", {"destination": "Galle"})
+    )
+    assert understander.calls == []
+    assert update["intent"] == "plan"
+    assert update["trip_request"]["traveller_type"] == "foreign"
+    assert update["trip_request"]["destination"] == "Galle"
+    assert update["missing_fields"] == ["days", "origin"]
+    assert update["clarification_field"] is None
+    assert update["clarification_rounds"] == 1
+
+
+def test_a_typed_reply_still_goes_to_the_understander():
+    understander = FakeUnderstander(
+        {"We're from Germany": understood("plan", traveller_type="foreign")}
+    )
+    update = make_understand_request_node(understander)(
+        asked("traveller_type", "We're from Germany", {"destination": "Galle"})
+    )
+    assert [text for text, _ in understander.calls] == ["We're from Germany"]
+    assert update["trip_request"]["traveller_type"] == "foreign"
+
+
+def test_a_button_label_on_a_fresh_message_is_not_a_quick_reply():
+    understander = FakeUnderstander({"Kandy": understood("question")})
+    update = make_understand_request_node(understander)(
+        {"messages": [HumanMessage("Kandy")], "clarification_field": "destination"}
+    )
+    assert len(understander.calls) == 1  # no question pending: read it properly
+    assert update["intent"] == "question"
+
+
+def test_the_saved_traveller_type_fills_a_new_trip():
+    from langgraph.store.memory import InMemoryStore
+
+    understander = FakeUnderstander(
+        {"Plan Galle": understood("plan", destination="Galle")}
+    )
+    update = make_understand_request_node(understander)(
+        {"messages": [HumanMessage("Plan Galle")], "saved_traveller_type": "local"},
+        FakeRuntime(InMemoryStore()),
+    )
+    assert update["trip_request"]["traveller_type"] == "local"
+    assert update["missing_fields"] == ["days", "origin"]
+    assert "saved_traveller_type" not in update  # nothing new to save
+
+
+def test_a_new_traveller_type_is_saved_for_later_conversations():
+    from langgraph.store.memory import InMemoryStore
+
+    from ai_travel_assistant.long_term_memory import (
+        load_preferences,
+        load_traveller_type,
+    )
+
+    store = InMemoryStore()
+    make_understand_request_node(FakeUnderstander({}))(
+        asked("traveller_type", "Sri Lankan / I live here", {"destination": "Galle"}),
+        FakeRuntime(store),
+    )
+    assert load_traveller_type(store, "ana") == "local"
+    assert load_preferences(store, "ana") == [
+        "Sri Lankan or lives in Sri Lanka (local prices)"
+    ]
+    assert load_traveller_type(store, "someone-else") is None
+
+
+def test_without_a_store_the_traveller_type_is_only_kept_in_the_trip():
+    update = make_understand_request_node(FakeUnderstander({}))(
+        asked("traveller_type", "Visiting from abroad", {"destination": "Galle"})
+    )
+    assert update["trip_request"]["traveller_type"] == "foreign"
+    assert "saved_traveller_type" not in update

@@ -15,6 +15,7 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from ai_travel_assistant import llm_basics, tool_calling, web_app, web_ui  # noqa: E402
+from ai_travel_assistant.request_understanding import QUICK_REPLIES  # noqa: E402
 from tests.test_clarification import FakeUnderstander  # noqa: E402
 from tests.test_itinerary_graph import (  # noqa: E402
     TODAY,
@@ -123,11 +124,44 @@ def test_dev_mode_shows_the_itinerary_json(page, monkeypatch):
     assert any('"days": 2' in code.value for code in app.sidebar.code)
 
 
+def quick_reply_buttons(app) -> list:
+    return [b for b in app.button if (b.key or "").startswith("quick-")]
+
+
+def click_quick_reply(app, label: str):
+    [button] = [b for b in quick_reply_buttons(app) if b.label == label]
+    button.click().run()
+    assert not app.exception, app.exception
+
+
 def test_a_question_waits_for_the_answer(page):
     app = page(streaming())
     app.chat_input[0].set_value("Plan me a trip.").run()
-    assert "how many days" in texts(app)[-1]
+    assert texts(app)[-1] == "Where in Sri Lanka would you like to go?"
     assert any("waiting for your answer" in i.value for i in app.info)
+    # The question comes with its answers as buttons, and no starter cards.
+    labels = {b.label for b in quick_reply_buttons(app)}  # laid out in columns
+    assert labels == {label for label, _ in QUICK_REPLIES["destination"]}
+    assert suggestion_buttons(app) == []
+
+
+@pytest.mark.usefixtures("tools")
+def test_quick_replies_answer_every_question_then_the_plan_comes(page):
+    app = page(streaming(gather(), submit(plan())))
+    app.chat_input[0].set_value("Plan me a trip.").run()
+
+    click_quick_reply(app, "Ella")
+    assert texts(app)[-1] == "How many days would you like to spend in Ella?"
+    click_quick_reply(app, "2 days")
+    assert texts(app)[-1].startswith("Are you Sri Lankan")
+    click_quick_reply(app, "Visiting from abroad")
+    assert texts(app)[-1] == "Where will you start your trip to Ella from?"
+    click_quick_reply(app, "The airport (Katunayake)")
+
+    shown = texts(app)
+    assert "The airport (Katunayake)" in shown  # the click is the reply
+    assert shown[-1].startswith("# 2-day trip to Ella")
+    assert quick_reply_buttons(app) == []  # nothing is waiting any more
 
 
 def test_a_failed_turn_shows_a_safe_error_and_the_page_survives(page):

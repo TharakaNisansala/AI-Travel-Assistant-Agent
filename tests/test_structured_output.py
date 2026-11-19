@@ -61,6 +61,8 @@ def test_schema_descriptions_reach_the_json_schema():
         "travel_dates",
         "travellers",
         "pace",
+        "traveller_type",
+        "origin",
     }
 
 

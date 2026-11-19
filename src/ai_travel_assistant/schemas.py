@@ -19,6 +19,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # ask the traveller. The LangGraph agent will use this list to decide when to ask.
 CRITICAL_FIELDS = ("destination", "days")
 
+# What the chat agent (request_understanding.py) asks for before planning, one
+# question at a time in this order. The Stage 4 workflow keeps CRITICAL_FIELDS.
+# traveller_type picks local or foreigner prices; origin is where day 1 starts.
+PLAN_FIELDS = ("destination", "days", "traveller_type", "origin")
+
+TravellerType = Literal["local", "foreign"]
+
 
 class TripRequest(BaseModel):
     """A traveller's trip requirements, extracted from their message."""
@@ -59,6 +66,20 @@ class TripRequest(BaseModel):
     pace: Literal["relaxed", "moderate", "packed"] | None = Field(
         default=None,
         description="How busy each day should be, only if indicated.",
+    )
+    traveller_type: TravellerType | None = Field(
+        default=None,
+        description=(
+            "local: a Sri Lankan citizen or someone living in Sri Lanka. "
+            "foreign: visiting from abroad. Null unless the traveller said so."
+        ),
+    )
+    origin: str | None = Field(
+        default=None,
+        description=(
+            "Where in Sri Lanka the trip starts, e.g. 'Colombo' or 'Katunayake' "
+            "(the international airport). Null if not stated."
+        ),
     )
 
     def missing_critical_fields(self) -> list[str]:

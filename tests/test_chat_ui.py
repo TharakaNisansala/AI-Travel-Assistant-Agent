@@ -65,7 +65,7 @@ def test_a_typed_reply_is_shown_once():
 def test_a_question_gets_its_own_panel():
     text = chat(build(streaming()), "Plan me a trip.", "/quit")
     assert "A quick question" in text
-    assert "how many days" in text
+    assert "Where in Sri Lanka would you like to go?" in text
 
 
 def test_off_topic_is_answered_without_the_agent():

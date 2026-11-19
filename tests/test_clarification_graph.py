@@ -32,7 +32,14 @@ from ai_travel_assistant.tool_calling import (
     sqlite_checkpointer,
 )
 
-ASK_BOTH = "Where in Sri Lanka would you like to go, and for how many days?"
+ASK_PLACE = "Where in Sri Lanka would you like to go?"
+ASK_TYPE = (
+    "Are you Sri Lankan or living in Sri Lanka, or visiting from abroad? "
+    "Entry fees and prices are often different for each."
+)
+# Replies that give every detail the agent asks for, so the plan goes ahead.
+GALLE = "Galle, 2 days, from Colombo; we are tourists"
+ELLA = "Plan 3 days in Ella from Kandy; I'm Sri Lankan"
 
 
 class RecordingModel(GenericFakeChatModel):
@@ -76,11 +83,29 @@ def standard_understander() -> FakeUnderstander:
     return (
         FakeUnderstander()
         .add("Plan me a trip", understood("plan"))
-        .add("Galle, 2 days", understood("plan", destination="Galle", days=2))
+        .add(
+            GALLE,
+            understood(
+                "plan",
+                destination="Galle",
+                days=2,
+                origin="Colombo",
+                traveller_type="foreign",
+            ),
+        )
         .add("Galle", understood("plan", destination="Galle"))
         .add("3", understood("question", days=3))
         .add("no idea", understood("question"))
-        .add("Plan 3 days in Ella", understood("plan", destination="Ella", days=3))
+        .add(
+            ELLA,
+            understood(
+                "plan",
+                destination="Ella",
+                days=3,
+                origin="Kandy",
+                traveller_type="local",
+            ),
+        )
         .add("Where can I surf?", understood("question"))
         .add("Write my Python homework", understood("off_topic"))
         .add("Make day 2 easier", understood("modify"))
@@ -126,19 +151,22 @@ def test_a_vague_plan_pauses_with_a_question_and_no_agent_call():
 
     turn = ask_agent(graph, "t1", "Plan me a trip")
 
-    assert final_answer(turn) == ASK_BOTH
+    assert final_answer(turn) == ASK_PLACE
     assert turn[-1].name == CLARIFICATION_NAME
-    assert pending_question(graph, "t1") == ASK_BOTH
+    assert pending_question(graph, "t1") == ASK_PLACE
     assert model.calls == []
     # The question is already in the saved history while the run waits.
-    assert [m.content for m in saved(graph)["messages"]] == ["Plan me a trip", ASK_BOTH]
+    assert [m.content for m in saved(graph)["messages"]] == [
+        "Plan me a trip",
+        ASK_PLACE,
+    ]
 
 
 def test_a_complete_plan_never_pauses():
     model = agent("Day 1 in Ella ...")
     graph = build(model)
 
-    turn = ask_agent(graph, "t1", "Plan 3 days in Ella")
+    turn = ask_agent(graph, "t1", ELLA)
 
     assert pending_question(graph, "t1") is None
     assert final_answer(turn) == "Day 1 in Ella ..."
@@ -175,13 +203,13 @@ def test_the_reply_resumes_the_run_with_the_right_state():
     graph = build(model, understander)
 
     ask_agent(graph, "t1", "Plan me a trip")
-    turn = ask_agent(graph, "t1", "Galle, 2 days")
+    turn = ask_agent(graph, "t1", GALLE)
 
     # The turn is the reply and the answer: the run resumed, it did not restart.
-    assert [m.content for m in turn] == ["Galle, 2 days", "Day 1 in Galle ..."]
+    assert [m.content for m in turn] == [GALLE, "Day 1 in Galle ..."]
     assert understander.calls[1] == (
-        "Galle, 2 days",
-        {"clarification_context": ASK_BOTH},
+        GALLE,
+        {"clarification_context": ASK_PLACE},
     )
     state = saved(graph)
     assert state["trip_request"]["destination"] == "Galle"
@@ -193,8 +221,8 @@ def test_the_reply_resumes_the_run_with_the_right_state():
     assert "destination=Galle, days=2" in system_prompt(model.calls[0])
     assert [m.content for m in model.calls[0][1:]] == [
         "Plan me a trip",
-        ASK_BOTH,
-        "Galle, 2 days",
+        ASK_PLACE,
+        GALLE,
     ]
 
 
@@ -205,10 +233,19 @@ def test_two_rounds_ask_only_for_what_is_still_missing():
     ask_agent(graph, "t1", "Plan me a trip")
     second = ask_agent(graph, "t1", "Galle")
     third = ask_agent(graph, "t1", "3")
+    fourth = ask_agent(graph, "t1", "Visiting from abroad")
+    fifth = ask_agent(graph, "t1", "The airport (Katunayake)")
 
     assert final_answer(second) == "How many days would you like to spend in Galle?"
-    assert final_answer(third) == "Day 1 in Galle ..."
-    assert saved(graph)["trip_request"]["days"] == 3
+    assert final_answer(third) == ASK_TYPE
+    assert final_answer(fourth) == "Where will you start your trip to Galle from?"
+    assert final_answer(fifth) == "Day 1 in Galle ..."
+    trip = saved(graph)["trip_request"]
+    assert (trip["days"], trip["traveller_type"], trip["origin"]) == (
+        3,
+        "foreign",
+        "Katunayake",
+    )
 
 
 def test_resuming_runs_no_node_twice():
@@ -219,10 +256,14 @@ def test_resuming_runs_no_node_twice():
     ask_agent(graph, "t1", "Plan me a trip")
     ask_agent(graph, "t1", "Galle")
     ask_agent(graph, "t1", "3")
+    ask_agent(graph, "t1", "Visiting from abroad")
+    ask_agent(graph, "t1", "Colombo")
 
-    assert [text for text, _ in understander.calls] == ["Plan me a trip", "Galle", "3"]
+    # Every reply is a quick reply ("Galle" and "Colombo" are buttons, "3" a
+    # bare day count), so only the first message needs the understander.
+    assert [text for text, _ in understander.calls] == ["Plan me a trip"]
     kinds = [type(m).__name__ for m in saved(graph)["messages"]]
-    assert kinds == ["HumanMessage", "AIMessage"] * 3
+    assert kinds == ["HumanMessage", "AIMessage"] * 5
 
 
 def test_after_the_round_limit_the_agent_answers_with_assumptions():
@@ -249,15 +290,15 @@ def test_a_new_message_after_the_limit_counts_rounds_again():
 
     turn = ask_agent(graph, "t1", "Plan me a trip")
 
-    assert final_answer(turn) == ASK_BOTH
-    assert pending_question(graph, "t1") == ASK_BOTH
+    assert final_answer(turn) == ASK_PLACE
+    assert pending_question(graph, "t1") == ASK_PLACE
 
 
 def test_a_vague_request_after_a_plan_keeps_the_saved_trip():
     model = agent("Day 1 in Galle ...", "Another Galle plan ...")
     graph = build(model)
     ask_agent(graph, "t1", "Plan me a trip")
-    ask_agent(graph, "t1", "Galle, 2 days")
+    ask_agent(graph, "t1", GALLE)
 
     turn = ask_agent(graph, "t1", "Plan me a trip")
 
@@ -269,7 +310,7 @@ def test_a_follow_up_edit_after_a_plan_is_not_questioned():
     model = agent("Day 1 in Galle ...", "Day 2 is easier now.")
     graph = build(model)
     ask_agent(graph, "t1", "Plan me a trip")
-    ask_agent(graph, "t1", "Galle, 2 days")
+    ask_agent(graph, "t1", GALLE)
 
     turn = ask_agent(graph, "t1", "Make day 2 easier")
 
@@ -295,9 +336,9 @@ def test_paused_threads_are_isolated():
     graph = build(model)
 
     ask_agent(graph, "a", "Plan me a trip")
-    ask_agent(graph, "b", "Plan 3 days in Ella")
+    ask_agent(graph, "b", ELLA)
 
-    assert pending_question(graph, "a") == ASK_BOTH
+    assert pending_question(graph, "a") == ASK_PLACE
     assert pending_question(graph, "b") is None
     assert "Plan me a trip" not in [m.content for m in model.calls[0]]
 
@@ -324,8 +365,8 @@ def test_a_paused_thread_resumes_after_a_restart(tmp_path):
     model = agent("Day 1 in Galle ...")
     with sqlite_checkpointer(db) as saver:
         second = build(model, checkpointer=saver)
-        assert pending_question(second, "trip-1") == ASK_BOTH
-        turn = ask_agent(second, "trip-1", "Galle, 2 days")
+        assert pending_question(second, "trip-1") == ASK_PLACE
+        turn = ask_agent(second, "trip-1", GALLE)
         state = saved(second, "trip-1")
 
     assert final_answer(turn) == "Day 1 in Galle ..."
@@ -342,7 +383,7 @@ def test_preferences_reach_the_agent_after_a_resume():
     graph = build(model, store=store)
 
     ask_agent(graph, "t1", "Plan me a trip")
-    ask_agent(graph, "t1", "Galle, 2 days")
+    ask_agent(graph, "t1", GALLE)
 
     prompt = system_prompt(model.calls[0])
     assert "vegetarian" in prompt
@@ -398,13 +439,13 @@ def fake_terminal(*lines: str):
 
 def test_chat_asks_then_answers():
     graph = build(agent("Day 1 in Galle ..."))
-    read, write, shown = fake_terminal("Plan me a trip", "Galle, 2 days", "/quit")
+    read, write, shown = fake_terminal("Plan me a trip", GALLE, "/quit")
 
     run_agent_chat(graph, read, write)
 
-    assert f"AI: {ASK_BOTH}" in shown
+    assert f"AI: {ASK_PLACE}" in shown
     assert "AI: Day 1 in Galle ..." in shown
-    assert shown.index(f"AI: {ASK_BOTH}") < shown.index("AI: Day 1 in Galle ...")
+    assert shown.index(f"AI: {ASK_PLACE}") < shown.index("AI: Day 1 in Galle ...")
 
 
 def test_chat_reopened_on_a_paused_thread_shows_the_question(tmp_path):
@@ -412,26 +453,24 @@ def test_chat_reopened_on_a_paused_thread_shows_the_question(tmp_path):
     with sqlite_checkpointer(db) as saver:
         ask_agent(build(agent(), checkpointer=saver), "trip-1", "Plan me a trip")
 
-    read, write, shown = fake_terminal("Galle, 2 days", "/quit")
+    read, write, shown = fake_terminal(GALLE, "/quit")
     with sqlite_checkpointer(db) as saver:
         graph = build(agent("Day 1 in Galle ..."), checkpointer=saver)
         run_agent_chat(graph, read, write, thread_id="trip-1")
 
     assert shown[0] == "Continuing conversation trip-1 (2 saved messages)."
-    assert shown[1] == f"AI (waiting for your answer): {ASK_BOTH}"
+    assert shown[1] == f"AI (waiting for your answer): {ASK_PLACE}"
     assert "AI: Day 1 in Galle ..." in shown
 
 
 def test_new_while_paused_starts_fresh_and_keeps_the_old_question():
     graph = build(agent("Day 1 in Ella ..."))
-    read, write, shown = fake_terminal(
-        "Plan me a trip", "/new", "Plan 3 days in Ella", "/quit"
-    )
+    read, write, shown = fake_terminal("Plan me a trip", "/new", ELLA, "/quit")
 
     run_agent_chat(graph, read, write, thread_id="old")
 
     assert "AI: Day 1 in Ella ..." in shown
-    assert pending_question(graph, "old") == ASK_BOTH
+    assert pending_question(graph, "old") == ASK_PLACE
 
 
 def test_cli_no_clarify_needs_chat():

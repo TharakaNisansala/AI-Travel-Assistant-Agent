@@ -20,6 +20,9 @@ What this file demonstrates:
      day cards from state["itinerary"] (see web_ui.py), not from its Markdown,
      and the same data becomes the downloadable PDF (itinerary_pdf.py).
      Set TRAVEL_DEV=1 to also see the raw itinerary JSON in the sidebar.
+  5. Quick replies. While the agent waits for an answer, the page shows the
+     asked field's QUICK_REPLIES as buttons. A click sends the label as the
+     reply, which request_understanding reads without an LLM call.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from ai_travel_assistant import web_ui
 from ai_travel_assistant.long_term_memory import sqlite_store
+from ai_travel_assistant.request_understanding import QUICK_REPLIES
 from ai_travel_assistant.streaming import (
     Step,
     Token,
@@ -188,6 +192,21 @@ def suggestions() -> str | None:
     return picked
 
 
+def quick_replies(field: str | None) -> str | None:
+    """Answer buttons for the field the agent asked about; returns a clicked one."""
+    options = QUICK_REPLIES.get(field or "", ())
+    if not options:
+        return None
+    st.caption("Tap an answer, or type your own below.")
+    columns = st.columns(min(len(options), 4))
+    picked = None
+    for i, (label, _) in enumerate(options):
+        column = columns[i % len(columns)]
+        if column.button(label, key=f"quick-{field}-{i}", use_container_width=True):
+            picked = label
+    return picked
+
+
 def main() -> None:
     st.set_page_config(
         page_title=f"{web_ui.APP_NAME} · Sri Lanka travel planner", page_icon="🌴"
@@ -234,7 +253,10 @@ def main() -> None:
     if waiting:
         st.info("The assistant is waiting for your answer to its question.")
 
-    picked = None if history or waiting else suggestions()
+    if waiting:
+        picked = quick_replies(values.get("clarification_field"))
+    else:
+        picked = None if history else suggestions()
     if prompt := st.chat_input(PLACEHOLDER) or picked:
         with st.chat_message("user", avatar=web_ui.USER_AVATAR):
             st.markdown(prompt)
