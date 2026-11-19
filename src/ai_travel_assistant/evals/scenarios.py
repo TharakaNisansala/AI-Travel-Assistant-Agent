@@ -56,6 +56,7 @@ FAULT_TOOLS: dict[str, str] = {
     "guide": "get_destination_guide",
     "travel": "estimate_travel_time",
     "currency": "convert_currency",
+    "pricing": "get_attraction_prices",
 }
 
 
