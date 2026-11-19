@@ -47,13 +47,14 @@ ASSISTANT_AVATAR = "🌴"
 
 # (title, subtitle, the message it sends)
 SUGGESTIONS: tuple[tuple[str, str, str], ...] = (
+    # First: the easiest start. The agent then asks each detail with buttons.
+    ("Plan a trip for me", "Answer a few quick questions", "Plan me a trip."),
     ("Kandy in 2 days", "Temples, the lake and culture", "Plan 2 days in Kandy"),
     (
         "Ella for hikers",
         "Peaks, bridges and tea country",
         "Plan 3 days in Ella; I like hiking and scenic places",
     ),
-    ("A weekend in Galle", "The fort, beaches and food", "Plan 2 days in Galle"),
     (
         "Weather check",
         "What to expect this week",

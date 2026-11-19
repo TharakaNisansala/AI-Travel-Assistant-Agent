@@ -83,15 +83,27 @@ def test_the_header_names_the_provider_and_model(page):
     assert any("Gemini · fake-model" in md.value for md in app.markdown)
 
 
-def test_a_suggestion_sends_its_message(page):
-    app = page(streaming("Kandy is lovely."))
+def test_plan_a_trip_for_me_is_the_first_card_and_starts_the_questions(page):
+    assert web_ui.SUGGESTIONS[0][0] == "Plan a trip for me"
+    app = page(streaming())
     suggestion_buttons(app)[0].click().run()
     assert not app.exception, app.exception
     shown = texts(app)
-    assert shown[0] == web_ui.SUGGESTIONS[0][2]
-    assert shown[-1] == "Kandy is lovely."
+    assert shown[0] == "Plan me a trip."
+    assert shown[-1] == "Where in Sri Lanka would you like to go?"
+    assert quick_reply_buttons(app)  # the first question comes with buttons
     # Suggestions are only for an empty conversation.
     assert suggestion_buttons(app) == []
+
+
+def test_a_suggestion_sends_its_message(page):
+    app = page(streaming("Kandy is lovely."))
+    [card] = [b for b in suggestion_buttons(app) if "Kandy" in b.label]
+    card.click().run()
+    assert not app.exception, app.exception
+    shown = texts(app)
+    assert shown[0] == "Plan 2 days in Kandy"
+    assert shown[-1] == "Kandy is lovely."
 
 
 @pytest.mark.usefixtures("tools")
