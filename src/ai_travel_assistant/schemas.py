@@ -252,9 +252,32 @@ class DayPlanDraft(BaseModel):
 
 
 class CostItem(BaseModel):
-    """A price quoted in the guide, with its conversion."""
+    """A price quoted in the guide, with its conversion (never an entrance fee)."""
 
     item: str = Field(min_length=1, description="What the price is for.")
+    per: Literal["person", "group"] = Field(
+        default="group",
+        description=(
+            "person if the quoted price is for one person; group if it is "
+            "shared, e.g. a room, a vehicle or a boat."
+        ),
+    )
+    quantity: int = Field(
+        default=1,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of these the trip needs, e.g. 2 rooms x 2 nights = 4. "
+            "For a per-person price, per person (people are counted for you)."
+        ),
+    )
+    quantity_note: str | None = Field(
+        default=None,
+        description=(
+            "How quantity was worked out, with any assumption, e.g. '2 rooms x "
+            "2 nights, assuming 2 people per room'."
+        ),
+    )
     quoted_currency: Currency = Field(
         description="The currency the guide quotes the price in."
     )
@@ -328,8 +351,82 @@ class DayPlan(DayPlanDraft):
     weather: str | None = None
 
 
+# --- Filled in by code after the checks (itinerary_budget.py), never by the LLM ---
+
+
+class FeeCategory(BaseModel):
+    """One visitor category's entrance fee at one attraction, as text."""
+
+    label: str  # "Sri Lankan adult"
+    text: str  # "LKR 300 (USD 1) · Confidence: High" or "Not verified. ..."
+    verified: bool
+
+
+class FeeLine(BaseModel):
+    """What the group's travellers of one category pay at one attraction."""
+
+    people: str  # "2 Sri Lankan adults"
+    status: Literal["verified", "estimate", "not_verified"]
+    text: str  # "2 Sri Lankan adults x LKR 300 = LKR 600"
+    total_lkr: float | None = None
+    total_usd: float | None = None
+
+
+class AttractionFees(BaseModel):
+    """Official entrance fees at one attraction, per category and for the group."""
+
+    query: str
+    name: str | None  # None: no official price was found
+    categories: list[FeeCategory] = Field(default_factory=list)
+    group: list[FeeLine] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    conditions: str = ""
+    extras: list[str] = Field(default_factory=list)
+    verified_lkr: float | None = 0.0
+    verified_usd: float | None = 0.0
+
+
+class CostLine(BaseModel):
+    """A checked guide cost, per person and for the whole group."""
+
+    item: str
+    per: Literal["person", "group"]
+    quantity: int
+    quantity_note: str | None = None
+    each_lkr: float | None = None
+    each_usd: float | None = None
+    group_lkr: float | None = None
+    group_usd: float | None = None
+    per_person_lkr: float | None = None
+    per_person_usd: float | None = None
+
+
+class Budget(BaseModel):
+    """The trip's money in one place: verified, estimated and missing."""
+
+    group: str = ""  # "2 Sri Lankan adults, 1 SAARC adult"
+    travellers: int | None = None
+    entrance_verified_lkr: float | None = 0.0
+    entrance_verified_usd: float | None = 0.0
+    entrance_estimated_lkr: float | None = 0.0
+    entrance_estimated_usd: float | None = 0.0
+    other_estimated_lkr: float | None = 0.0
+    other_estimated_usd: float | None = 0.0
+    total_lkr: float | None = 0.0
+    total_usd: float | None = 0.0
+    per_person_lkr: float | None = None  # only when everyone pays the same
+    per_person_usd: float | None = None
+    not_verified: list[str] = Field(default_factory=list)
+    requires_confirmation: list[str] = Field(default_factory=list)
+    not_included: list[str] = Field(default_factory=list)
+    rate_note: str = ""
+
+
 class Itinerary(ItineraryDraft):
     """The checked plan that is rendered and saved (see itinerary_output.py)."""
 
     day_plans: list[DayPlan] = Field(min_length=1)
     warnings: list[str] = Field(default_factory=list)
+    entrance_fees: list[AttractionFees] = Field(default_factory=list)
+    cost_lines: list[CostLine] = Field(default_factory=list)
+    budget: Budget | None = None

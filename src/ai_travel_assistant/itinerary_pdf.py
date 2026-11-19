@@ -206,6 +206,21 @@ def _costs(w: _Writer, costs: list[Mapping[str, Any]]) -> None:
             row.cell(w.clean(_money(cost.get("amount_usd"), "USD")))
 
 
+def _budget(w: _Writer, plan: Mapping[str, Any]) -> bool:
+    """Entrance fees, other costs and the budget; False if the plan has none."""
+    from ai_travel_assistant.itinerary_budget import budget_sections
+
+    sections = budget_sections(plan)
+    for title, items in sections:
+        w.heading(title)
+        for item in items:
+            w.text(item.text, size=9.5, bold=bool(item.details))
+            for detail in item.details:
+                w.text(f"•  {detail}", size=8.5, indent=4)
+            w.pdf.ln(1)
+    return bool(sections)
+
+
 def _notes(w: _Writer, plan: Mapping[str, Any]) -> None:
     facts = plan.get("facts") or []
     tips = plan.get("tips") or []
@@ -231,8 +246,8 @@ def itinerary_pdf(plan: Mapping[str, Any], today: date | None = None) -> bytes:
     _title_band(w, plan)
     for day in plan.get("day_plans") or []:
         _day(w, day)
-    if plan.get("costs"):
-        _costs(w, plan["costs"])
+    if not _budget(w, plan) and plan.get("costs"):
+        _costs(w, plan["costs"])  # itineraries saved before the budget existed
     _notes(w, plan)
 
     w.pdf.ln(6)

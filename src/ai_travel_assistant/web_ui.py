@@ -34,7 +34,13 @@ MUTED = "#64748B"
 
 APP_NAME = "Ceylon Concierge"
 TAGLINE = "Your AI travel planner for Sri Lanka"
-DATA_SOURCES = ("Open-Meteo", "OpenStreetMap", "Wikivoyage", "OSRM routing")
+DATA_SOURCES = (
+    "Open-Meteo",
+    "OpenStreetMap",
+    "Wikivoyage",
+    "OSRM routing",
+    "Central Cultural Fund (ticket prices)",
+)
 
 USER_AVATAR = "🧳"
 ASSISTANT_AVATAR = "🌴"
@@ -287,6 +293,15 @@ def costs_html(costs: list[Mapping[str, Any]]) -> str:
     )
 
 
+def budget_items_markdown(items: list[Any]) -> str:
+    """One budget section's items as nested Markdown bullets."""
+    lines = []
+    for item in items:
+        lines.append(f"- **{item.text}**" if item.details else f"- {item.text}")
+        lines.extend(f"    - {detail}" for detail in item.details)
+    return "\n".join(lines)
+
+
 def day_tab_label(day: Mapping[str, Any]) -> str:
     return f"Day {day.get('day', '?')} · {day.get('theme', '')}"
 
@@ -340,7 +355,16 @@ def render_itinerary(
                 timeline_html(day.get("activities") or []), unsafe_allow_html=True
             )
 
-    if itinerary.get("costs"):
+    # Entrance fees, other costs and the budget: the same sections as the
+    # Markdown reply and the PDF (itinerary_budget.budget_sections).
+    from ai_travel_assistant.itinerary_budget import budget_sections
+
+    money = budget_sections(itinerary)
+    for title, items in money:
+        icon = "🧾" if title.startswith("Trip budget") else "💰"
+        st.markdown(f"##### {icon} {title}")
+        st.markdown(budget_items_markdown(items))
+    if not money and itinerary.get("costs"):
         st.markdown("##### 💰 Costs")
         st.markdown(costs_html(itinerary["costs"]), unsafe_allow_html=True)
 

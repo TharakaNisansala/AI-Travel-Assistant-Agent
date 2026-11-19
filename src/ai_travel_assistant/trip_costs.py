@@ -231,3 +231,78 @@ def summarise(costs: Iterable[AttractionCost], travellers: int) -> EntranceSumma
         for line in cost.unverified:
             summary.unverified.append(f"{cost.name}: {line.people}")
     return summary
+
+
+# --- Wording shared by the tool and the itinerary --------------------------------
+
+
+def format_money(money: Money | None) -> str:
+    """'LKR 11,760 (USD 35)'; a side that could not be worked out is left out."""
+    if money is None:
+        return "-"
+    parts = []
+    if money.lkr is not None:
+        parts.append(f"LKR {money.lkr:,.0f}")
+    if money.usd is not None:
+        usd = f"USD {money.usd:,.2f}".replace(".00", "")
+        parts.append(f"({usd})" if parts else usd)
+    return " ".join(parts) or "amount unavailable"
+
+
+def category_text(price: CategoryPrice, lkr_per_usd: float | None) -> str:
+    """'LKR 11,760 (USD 35) · Confidence: Medium (...)' or 'Not verified. ...'."""
+    if price.record is None:
+        return f"Not verified. {price.note}".rstrip()
+    record = price.record
+    each = format_money(record_money(record, lkr_per_usd))
+    unit = "" if record.unit == "person" else f" per {record.unit}"
+    text = f"{each}{unit} · Confidence: {price.confidence}"
+    return f"{text} ({price.note})" if price.note else text
+
+
+def group_line_text(line: GroupLine) -> str:
+    """'1 SAARC adult x LKR 1,500 (USD 5) = ...', an ESTIMATE, or not verified."""
+    if line.subtotal is not None:
+        each, total = format_money(line.each), format_money(line.subtotal)
+        return f"{line.people} x {each} = {total}"
+    if line.estimate is not None:
+        return (
+            f"{line.people}: ESTIMATE {format_money(line.estimate)} "
+            f"({line.estimate_note})"
+        )
+    return f"{line.people}: not verified"
+
+
+def source_lines(records: Iterable[PriceRecord]) -> list[str]:
+    """One 'Source: authority (status), url (dates)' line per distinct source."""
+    seen, lines = set(), []
+    for r in records:
+        key = (r.source_url, r.source_authority)
+        if key in seen:
+            continue
+        seen.add(key)
+        dates = f"last verified {r.last_verified.isoformat()}"
+        if r.source_updated:
+            dates = f"source updated {r.source_updated.isoformat()}, " + dates
+        lines.append(
+            f"Source: {r.source_authority} ({r.status}), {r.source_url} ({dates})"
+        )
+    return lines
+
+
+def extra_text(record: PriceRecord, lkr_per_usd: float | None) -> str:
+    """A separately payable charge, never part of the entrance total."""
+    who = {"local": "Sri Lankan", "saarc": "SAARC", "non_saarc": "non-SAARC"}
+    visitor = f"{who.get(record.nationality, record.nationality)} {record.age_group}"
+    money = format_money(record_money(record, lkr_per_usd))
+    return (
+        f"Separate {record.ticket_type} (not in the entrance total): "
+        f"{record.attraction_name}, {money} per {record.unit} ({visitor})"
+    )
+
+
+def entrance_conditions(records: Iterable[PriceRecord]) -> str:
+    return next(
+        (r.conditions for r in records if r.conditions and r.ticket_type == "entrance"),
+        "",
+    )

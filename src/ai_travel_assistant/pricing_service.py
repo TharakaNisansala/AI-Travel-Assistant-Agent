@@ -156,6 +156,11 @@ def _words(text: str) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9]+", text) if w not in _STOP_WORDS]
 
 
+def name_words(text: str) -> list[str]:
+    """The words that identify a place name ("Temple of the Tooth" -> temple, tooth)."""
+    return _words(text)
+
+
 def attraction_id(name: str) -> str:
     """'Galle (Museum)' -> 'galle-museum'."""
     return "-".join(_words(name))

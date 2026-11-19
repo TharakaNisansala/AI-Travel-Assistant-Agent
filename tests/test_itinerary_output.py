@@ -262,7 +262,14 @@ def test_the_rendered_plan():
     assert (
         "- **Afternoon: Ella Rock** (about 4 h) - A longer hike. _(Wikivoyage)_" in text
     )
-    assert "| Ravana Cave entry | 500 | 1.67 |" in text
+    # Guide prices are estimates, per person and for the group, then a budget.
+    assert "## Other costs (estimates from Wikivoyage, may be out of date)" in text
+    assert "- **Ravana Cave entry**" in text
+    assert "  - Price: LKR 500 (USD 1.67) (shared) x 1" in text
+    assert "  - For the group: LKR 500 (USD 1.67)" in text
+    assert "## Trip budget" in text
+    assert "- TOTAL estimated budget for the group: LKR 500 (USD 1.67)" in text
+    assert "  - Food and drinks" in text  # named as not included, never guessed
     assert "- Trains from Kandy stop at Ella. _(Wikivoyage)_" in text
     assert "_General advice, not checked against live data._" in text
     assert "- Hotel prices" in text

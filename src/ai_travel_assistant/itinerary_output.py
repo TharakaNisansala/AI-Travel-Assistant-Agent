@@ -30,6 +30,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ValidationError
 
 from ai_travel_assistant.context_window import current_turn_start
+from ai_travel_assistant.itinerary_budget import budget_markdown, build_costs
 from ai_travel_assistant.itinerary_grounding import SUBMIT_TOOL, ground_itinerary
 from ai_travel_assistant.schemas import (
     Activity,
@@ -68,8 +69,13 @@ ITINERARY_RULE = (
     "with the whole plan, every day included. Fill it only from tool results: "
     "sights as named by find_attractions or the guide, with that source; "
     "travel legs only between places you estimated with estimate_travel_time; "
-    "prices only as quoted in the guide (quoted_currency), with the other "
-    "currency from convert_currency; forecast_date only for days the forecast "
+    "costs only for prices quoted in the guide (quoted_currency), such as "
+    "rooms or boat trips, with the other currency from convert_currency, "
+    "per (person or group) and the quantity the trip needs, explaining it and "
+    "any assumption in quantity_note (e.g. '2 rooms x 2 nights, assuming 2 "
+    "people per room'); never entrance fees, which are added automatically "
+    "from get_attraction_prices for the sights in the plan; forecast_date "
+    "only for days the forecast "
     "covers. Leave anything unknown null and list it in not_available. Put "
     "factual details (transport, opening hours, safety, prices) in facts, each "
     "with a short verbatim quote and its source; tips are general suggestions "
@@ -249,6 +255,10 @@ def _sources_used(itinerary: Itinerary) -> list[str]:
             add("ExchangeRate-API")
     for fact in itinerary.facts:
         add(fact.source)
+    for fee in itinerary.entrance_fees:
+        if fee.name:
+            for line in fee.sources:
+                add(line.removeprefix("Source: ").split(" (")[0])
     return used
 
 
@@ -290,7 +300,10 @@ def render_itinerary_markdown(itinerary: Itinerary) -> str:
                 f"{text} _({activity.source})_"
             )
 
-    if itinerary.costs:
+    money = budget_markdown(itinerary.model_dump(mode="json"))
+    if money:
+        lines += money
+    elif itinerary.costs:
         lines += ["", "## Costs (indicative)", "| Item | LKR | USD |", "|---|---|---|"]
         for cost in itinerary.costs:
             lkr = _amount(cost.amount_lkr, "LKR")
@@ -401,6 +414,11 @@ def compose_itinerary(
                 messages,
                 today=today,
                 trip_request=dict(trip_request or {}) or None,
+            )
+            # Entrance fees, per-person and group costs and the budget are
+            # worked out by code from the tool results (itinerary_budget.py).
+            checked = checked.model_copy(
+                update=build_costs(checked, messages, trip_request, today=today)
             )
             if salvaged:
                 checked = checked.model_copy(

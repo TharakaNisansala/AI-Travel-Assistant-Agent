@@ -76,15 +76,18 @@ from ai_travel_assistant.guide_service import (
     Topic,
 )
 from ai_travel_assistant.party import describe_group, group_breakdown
-from ai_travel_assistant.pricing_service import CategoryPrice, PriceRecord
 from ai_travel_assistant.travel_service import TravelEstimate, TravelServiceError
 from ai_travel_assistant.trip_costs import (
     CATEGORY_LABELS,
     ZERO,
     EntranceSummary,
-    Money,
     attraction_cost,
-    record_money,
+    category_text,
+    entrance_conditions,
+    extra_text,
+    format_money,
+    group_line_text,
+    source_lines,
     summarise,
 )
 from ai_travel_assistant.weather_service import WeatherReport, WeatherServiceError
@@ -737,46 +740,6 @@ def convert_currency(amount: float, from_currency: str, to_currency: str) -> str
 # --- Ticket prices (pricing_service.py, trip_costs.py) --------------------------------
 
 
-def _amount(money: Money | None) -> str:
-    """'LKR 11,760 (USD 35)'; a side that could not be worked out is left out."""
-    if money is None:
-        return "-"
-    parts = []
-    if money.lkr is not None:
-        parts.append(f"LKR {money.lkr:,.0f}")
-    if money.usd is not None:
-        usd = f"USD {money.usd:,.2f}".replace(".00", "")
-        parts.append(f"({usd})" if parts else usd)
-    return " ".join(parts) or "amount unavailable"
-
-
-def _category_line(price: CategoryPrice, lkr_per_usd: float | None) -> str:
-    label = CATEGORY_LABELS[(price.nationality, price.age_group)]
-    if price.record is None:
-        return f"- {label}: Not verified. {price.note}".rstrip()
-    record = price.record
-    each = _amount(record_money(record, lkr_per_usd))
-    unit = "" if record.unit == "person" else f" per {record.unit}"
-    line = f"- {label}: {each}{unit} · Confidence: {price.confidence}"
-    return f"{line} ({price.note})" if price.note else line
-
-
-def _sources(records: Sequence[PriceRecord]) -> list[str]:
-    seen, lines = set(), []
-    for r in records:
-        key = (r.source_url, r.source_authority)
-        if key in seen:
-            continue
-        seen.add(key)
-        dates = f"last verified {r.last_verified.isoformat()}"
-        if r.source_updated:
-            dates = f"source updated {r.source_updated.isoformat()}, " + dates
-        lines.append(
-            f"Source: {r.source_authority} ({r.status}), {r.source_url} ({dates})"
-        )
-    return lines
-
-
 def format_attraction_prices(
     summary: EntranceSummary,
     group_text: str,
@@ -795,43 +758,30 @@ def format_attraction_prices(
             )
             continue
         lines.append(f"{cost.name}:")
-        lines.extend(_category_line(p, lkr_per_usd) for p in cost.categories)
-        lines.extend(_sources(cost.records))
-        for record in cost.records:
-            if record.conditions and record.ticket_type == "entrance":
-                lines.append(f"Conditions: {record.conditions}")
-                break
+        for price in cost.categories:
+            label = CATEGORY_LABELS[(price.nationality, price.age_group)]
+            lines.append(f"- {label}: {category_text(price, lkr_per_usd)}")
+        lines.extend(source_lines(cost.records))
+        conditions = entrance_conditions(cost.records)
+        if conditions:
+            lines.append(f"Conditions: {conditions}")
         if cost.group:
             lines.append("For this group:")
-            for g in cost.group:
-                if g.subtotal is not None:
-                    each, total = _amount(g.each), _amount(g.subtotal)
-                    lines.append(f"- {g.people} x {each} = {total}")
-                elif g.estimate is not None:
-                    lines.append(
-                        f"- {g.people}: ESTIMATE {_amount(g.estimate)} "
-                        f"({g.estimate_note})"
-                    )
-                else:
-                    lines.append(f"- {g.people}: not verified")
-            lines.append(f"Verified entrance subtotal: {_amount(cost.verified_total)}")
-        for extra in cost.extras:
+            lines.extend(f"- {group_line_text(g)}" for g in cost.group)
             lines.append(
-                f"Separate {extra.ticket_type} (not in the entrance total): "
-                f"{extra.attraction_name}, "
-                f"{_amount(record_money(extra, lkr_per_usd))} per {extra.unit} "
-                f"({_visitor(extra)})"
+                f"Verified entrance subtotal: {format_money(cost.verified_total)}"
             )
+        lines.extend(extra_text(extra, lkr_per_usd) for extra in cost.extras)
 
     lines.append("")
     if group_text:
         lines.append(f"Group: {group_text}.")
         lines.append(
-            f"Verified entrance fees for the group: {_amount(summary.verified)}"
+            f"Verified entrance fees for the group: {format_money(summary.verified)}"
         )
         if summary.estimated != ZERO:
             lines.append(
-                f"Estimated (not verified) on top: {_amount(summary.estimated)}"
+                f"Estimated (not verified) on top: {format_money(summary.estimated)}"
             )
         if summary.unverified:
             lines.append(
@@ -850,15 +800,10 @@ def format_attraction_prices(
     lines.append(
         "Use these figures exactly. Never fill in a 'Not verified' price, never "
         "use one category's price for another, and label every estimate as an "
-        "estimate."
+        "estimate. In an itinerary, entrance fees are added from these results "
+        "automatically: do not put them in costs."
     )
     return "\n".join(lines)
-
-
-def _visitor(record: PriceRecord) -> str:
-    """'foreign adult', 'Sri Lankan child': who a listed extra price is for."""
-    who = {"local": "Sri Lankan", "saarc": "SAARC", "non_saarc": "non-SAARC"}
-    return f"{who.get(record.nationality, record.nationality)} {record.age_group}"
 
 
 def _lkr_per_usd() -> tuple[float | None, str]:
@@ -873,11 +818,11 @@ def _lkr_per_usd() -> tuple[float | None, str]:
     )
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def get_attraction_prices(
     attractions: list[str],
     state: Annotated[dict, InjectedState],
-) -> str:
+) -> tuple[str, dict]:
     """Look up official entrance fees for attractions, for every visitor category.
 
     Use this for any ticket or entrance price, and when planning a visit that
@@ -893,21 +838,41 @@ def get_attraction_prices(
     Args:
         attractions: Attraction names, at most eight.
     """
+    # The artifact is never shown to the LLM. It keeps the raw records, so
+    # the itinerary can recompute the group's fees without another lookup.
     trip = (state or {}).get("trip_request") or {}
     group = group_breakdown(trip)
     try:
         book = pricing_service.load_price_book()
     except pricing_service.CuratedPriceError as exc:
-        return f"Ticket prices unavailable: the curated price file is invalid ({exc})."
+        text = f"Ticket prices unavailable: the curated price file is invalid ({exc})."
+        return text, {}
+    names = list(dict.fromkeys(a.strip() for a in attractions if a.strip()))[:8]
+    if not names:
+        return "No attraction names were given.", {}
     lkr_per_usd, rate_note = _lkr_per_usd()
     today = date.today()
+    found = [book.lookup(name) for name in names]
     costs = [
-        attraction_cost(book.lookup(name), group, today=today, lkr_per_usd=lkr_per_usd)
-        for name in list(dict.fromkeys(a.strip() for a in attractions if a.strip()))[:8]
+        attraction_cost(f, group, today=today, lkr_per_usd=lkr_per_usd) for f in found
     ]
-    if not costs:
-        return "No attraction names were given."
     summary = summarise(costs, int(trip.get("travellers") or 0))
-    return format_attraction_prices(
+    text = format_attraction_prices(
         summary, describe_group(trip), book.problems, lkr_per_usd, rate_note
     )
+    artifact = {
+        "checked_on": today.isoformat(),
+        "lkr_per_usd": lkr_per_usd,
+        "rate_note": rate_note,
+        "problems": list(book.problems),
+        "attractions": [
+            {
+                "query": f.query,
+                "attraction_id": f.attraction_id,
+                "name": f.attraction_name,
+                "records": [r.to_json() for r in f.records],
+            }
+            for f in found
+        ],
+    }
+    return text, artifact
