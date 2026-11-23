@@ -71,6 +71,9 @@ from ai_travel_assistant.tool_calling import (
 
 DB_ENV = "TRAVEL_CHAT_DB"  # another SQLite file, e.g. for a demo or a test
 DEV_ENV = "TRAVEL_DEV"  # "1" shows developer-only views (the itinerary JSON)
+# "1" for the public deployment: provider fallback (provider_pool.py) and the
+# other public-only behaviour. Off by default: local use stays as it was.
+PUBLIC_ENV = "TRAVEL_PUBLIC"
 PLACEHOLDER = "Plan 3 days in Ella; I like hiking and scenic places"
 # Browser versions of the two command replies written for the terminal.
 QUIT_NOTE = (
@@ -83,18 +86,41 @@ JSON_DEV_ONLY = (
 )
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def public_mode() -> bool:
+    """Running as the public deployment (TRAVEL_PUBLIC=1)?"""
+    return _env_flag(PUBLIC_ENV)
+
+
+def load_llm_settings(public: bool):
+    """One provider (LLM_PROVIDER), or the fallback pool in public mode.
+
+    ConfigError if nothing usable is configured.
+    """
+    if public:
+        from ai_travel_assistant.provider_pool import load_pool_settings
+
+        return load_pool_settings()
+    from ai_travel_assistant.llm_basics import load_settings
+
+    return load_settings()
+
+
 @st.cache_resource(show_spinner="Starting the agent…")
-def get_graph(db_path: str) -> CompiledStateGraph:
+def get_graph(db_path: str, public: bool = False) -> CompiledStateGraph:
     """Build the --chat agent once per server process.
 
     The SQLite connections stay open for the life of the process, like the
     terminal chat's `with` block. atexit holds a reference to the ExitStack:
     without one it is garbage-collected when this function returns, which
     closes the context-manager generators and with them the connections.
+    In public mode the graph's models are a provider pool, built once, so its
+    health table is shared by every visitor.
     """
-    from ai_travel_assistant.llm_basics import load_settings
-
-    settings = load_settings()  # ConfigError if .env is incomplete
+    settings = load_llm_settings(public)  # ConfigError if nothing is set
     stack = ExitStack()
     atexit.register(stack.close)
     checkpointer = stack.enter_context(sqlite_checkpointer(Path(db_path)))
@@ -104,7 +130,7 @@ def get_graph(db_path: str) -> CompiledStateGraph:
 
 def dev_mode() -> bool:
     """Developer views on? Off by default, so travellers see only the PDF."""
-    return os.environ.get(DEV_ENV, "").strip().lower() in {"1", "true", "yes"}
+    return _env_flag(DEV_ENV)
 
 
 def _thread_config(thread_id: str) -> dict:
@@ -155,15 +181,25 @@ def show_notice() -> None:
 
 
 def model_label() -> str | None:
-    """'Cloudflare · glm-4.7-flash' for the header badge (no secrets)."""
-    from ai_travel_assistant.llm_basics import ConfigError, load_settings
+    """'Cloudflare · glm-4.7-flash' for the header badge (no secrets).
+
+    Public mode names the first provider and the fallbacks after it.
+    """
+    from ai_travel_assistant.llm_basics import ConfigError
 
     try:
-        settings = load_settings()
+        settings = load_llm_settings(public_mode())
     except ConfigError:
         return None
+    fallbacks: list[str] = []
+    if hasattr(settings, "members"):  # a provider pool
+        fallbacks = [m.provider.capitalize() for m in settings.members[1:]]
+        settings = settings.primary
     short = settings.model.rsplit("/", 1)[-1]
-    return f"{settings.provider.capitalize()} · {short}"
+    label = f"{settings.provider.capitalize()} · {short}"
+    if fallbacks:
+        label += f" · fallback: {', '.join(fallbacks)}"
+    return label
 
 
 def itinerary_markdown(itinerary: dict | None) -> str | None:
@@ -315,7 +351,9 @@ def main() -> None:
     from ai_travel_assistant.robustness import describe_llm_error
 
     try:
-        graph = get_graph(os.environ.get(DB_ENV, str(DEFAULT_CHAT_DB)))
+        graph = get_graph(
+            os.environ.get(DB_ENV, str(DEFAULT_CHAT_DB)), public=public_mode()
+        )
     except ConfigError as exc:
         st.error(f"Configuration error: {exc}")
         st.stop()

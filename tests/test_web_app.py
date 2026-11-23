@@ -28,6 +28,7 @@ from tests.test_itinerary_graph import (  # noqa: E402
 from tests.test_streaming import ANSWERS, streaming  # noqa: E402
 
 APP = str(Path(web_app.__file__))
+built_with: list = []  # the settings each build_chat_graph call received
 
 
 @pytest.fixture
@@ -35,13 +36,17 @@ def page(monkeypatch, tmp_path):
     """Returns a function: model -> a started AppTest on a fresh database."""
     import streamlit as st
 
+    built_with.clear()
+
     st.cache_resource.clear()
     settings = llm_basics.GeminiSettings(model="fake-model", api_key="k")
     monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
     monkeypatch.setenv(web_app.DB_ENV, str(tmp_path / "chat.sqlite"))
+    monkeypatch.delenv(web_app.PUBLIC_ENV, raising=False)  # local mode unless set
 
     def start(model):
         def fake_build(settings, checkpointer, store, **kwargs):
+            built_with.append(settings)
             return tool_calling.build_tool_agent_graph(
                 model,
                 checkpointer=checkpointer,
@@ -364,3 +369,57 @@ def test_a_command_while_a_question_waits_keeps_the_question(page):
     assert texts(app)[-1] == "Where in Sri Lanka would you like to go?"
     assert any("waiting for your answer" in text for text in infos(app))
     assert len(model.calls) == calls
+
+
+# --- Public mode (TRAVEL_PUBLIC=1): provider fallback -----------------------------
+
+
+def pool_settings():
+    from ai_travel_assistant.provider_pool import PoolSettings
+
+    return PoolSettings(
+        members=(
+            llm_basics.LLMSettings(model="flash", api_key="g-secret"),
+            llm_basics.LLMSettings(
+                model="@cf/zai-org/glm", api_key="c", provider="cloudflare"
+            ),
+            llm_basics.LLMSettings(model="oss", api_key="q", provider="groq"),
+        )
+    )
+
+
+def test_local_mode_builds_the_agent_with_one_provider(page):
+    page(streaming())
+    assert [type(s).__name__ for s in built_with] == ["LLMSettings"]
+
+
+def test_public_mode_builds_the_agent_with_the_provider_pool(page, monkeypatch):
+    from ai_travel_assistant import provider_pool
+
+    monkeypatch.setenv(web_app.PUBLIC_ENV, "1")
+    monkeypatch.setattr(provider_pool, "load_pool_settings", pool_settings)
+    app = page(streaming("Ella is green."))
+    assert [type(s).__name__ for s in built_with] == ["PoolSettings"]
+    header = " ".join(md.value for md in app.markdown)
+    assert "Gemini · flash · fallback: Cloudflare, Groq" in header
+    assert "g-secret" not in header
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert "Ella is green." in texts(app)
+
+
+def test_public_mode_with_no_provider_configured_says_so(page, monkeypatch):
+    from ai_travel_assistant import provider_pool
+
+    def none_configured():
+        raise llm_basics.ConfigError("No AI provider is configured.")
+
+    monkeypatch.setenv(web_app.PUBLIC_ENV, "1")
+    monkeypatch.setattr(provider_pool, "load_pool_settings", none_configured)
+    import streamlit as st
+
+    st.cache_resource.clear()
+    app = AppTest.from_file(APP, default_timeout=30)
+    app.run()
+    assert not app.exception
+    assert "No AI provider is configured." in app.error[0].value
+    assert len(app.chat_input) == 0

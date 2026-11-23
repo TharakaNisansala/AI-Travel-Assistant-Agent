@@ -155,6 +155,15 @@ def describe_llm_error(exc: BaseException) -> str:
     (in a badly formed error) a key. Only the exception's type name is shown
     for unknown errors, to help debugging.
     """
+    # Imported here: provider_pool imports this module.
+    from ai_travel_assistant.provider_pool import AllProvidersUnavailable
+
+    if isinstance(exc, AllProvidersUnavailable):
+        return {
+            "quota": QUOTA_MESSAGE,
+            "rate_limit": RATE_LIMIT_MESSAGE,
+            "busy": BUSY_MESSAGE,
+        }.get(exc.kind, REJECTED_MESSAGE)
     if is_quota_exhausted(exc):
         return QUOTA_MESSAGE
     if is_rate_limited(exc):

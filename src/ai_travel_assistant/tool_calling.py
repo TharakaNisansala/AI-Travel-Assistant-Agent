@@ -942,12 +942,29 @@ def build_chat_graph(
 
     persistence_provided: LangGraph Studio attaches its own checkpointer and
     store to the graph, so it is built without them (see studio.py).
+
+    settings may also be provider_pool.PoolSettings (public web page only):
+    every LLM call then tries the configured providers in order, once each.
+    The pool's final error is not transient, so llm_retry never repeats it.
     """
     from ai_travel_assistant.llm_basics import agent_client_retries, build_llm
+    from ai_travel_assistant.provider_pool import (
+        PoolSettings,
+        ProviderHealth,
+        build_provider_pool,
+    )
 
-    retries = agent_client_retries(settings)
-    llm = build_llm(settings, temperature=1.0, max_retries=retries)
-    precise_llm = build_llm(settings, temperature=0, max_retries=retries)
+    if isinstance(settings, PoolSettings):
+        # The public web page (TRAVEL_PUBLIC=1): several providers in order.
+        # Both models share one health table, so a provider whose quota ran
+        # out is skipped by the understander and the agent alike.
+        health = ProviderHealth()
+        llm = build_provider_pool(settings, temperature=1.0, health=health)
+        precise_llm = build_provider_pool(settings, temperature=0, health=health)
+    else:
+        retries = agent_client_retries(settings)
+        llm = build_llm(settings, temperature=1.0, max_retries=retries)
+        precise_llm = build_llm(settings, temperature=0, max_retries=retries)
     return build_tool_agent_graph(
         llm,
         checkpointer=checkpointer,
