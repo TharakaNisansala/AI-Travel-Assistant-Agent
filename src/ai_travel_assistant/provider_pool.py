@@ -22,6 +22,10 @@ What this file demonstrates:
      or structured output that did not parse) is raised at once, because
      another provider would just cost one more call.
   4. Providers without credentials are left out when the pool is built.
+  5. An optional daily call budget (usage_limits.DailyCallBudget) is asked
+     before EVERY provider call, fallbacks included, so it counts real API
+     requests. When it is used up, DailyLimitReached is raised and nothing
+     is sent.
 
 Duck-typed like a LangChain chat model for the three things the agent uses:
 invoke(), bind_tools() and with_structured_output(). Each provider's own
@@ -40,7 +44,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from langchain_core.runnables import Runnable, RunnableConfig
 
@@ -60,6 +64,13 @@ from ai_travel_assistant.robustness import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class CallBudget(Protocol):
+    """What the pool needs from usage_limits.DailyCallBudget."""
+
+    def try_consume(self) -> bool: ...
+
 
 FALLBACK_ORDER_ENV = "LLM_FALLBACK_ORDER"
 # Gemini gave the best itineraries in the evals; Cloudflare passed 1 of 2
@@ -236,12 +247,16 @@ class PoolRunnable(Runnable[Any, Any]):
     """Try each provider's runnable once, in order, skipping paused ones."""
 
     def __init__(
-        self, members: Sequence[tuple[str, Runnable]], health: ProviderHealth
+        self,
+        members: Sequence[tuple[str, Runnable]],
+        health: ProviderHealth,
+        budget: CallBudget | None = None,
     ) -> None:
         if not members:
             raise ValueError("a provider pool needs at least one provider")
         self.members = list(members)
         self.health = health
+        self.budget = budget
 
     @property
     def providers(self) -> list[str]:
@@ -257,6 +272,10 @@ class PoolRunnable(Runnable[Any, Any]):
             if reason is not None:
                 outcomes.append((name, reason))  # skipped: no API call
                 continue
+            if self.budget is not None and not self.budget.try_consume():
+                from ai_travel_assistant.usage_limits import DailyLimitReached
+
+                raise DailyLimitReached()  # not a provider error: no fallback
             try:
                 return runnable.invoke(input, config, **kwargs)
             except Exception as exc:
@@ -286,6 +305,7 @@ class ProviderPool(PoolRunnable):
         return PoolRunnable(
             [(name, model.bind_tools(tools, **kwargs)) for name, model in self.members],
             self.health,
+            self.budget,
         )
 
     def with_structured_output(self, schema: Any, **kwargs: Any) -> PoolRunnable:
@@ -295,6 +315,7 @@ class ProviderPool(PoolRunnable):
                 for name, model in self.members
             ],
             self.health,
+            self.budget,
         )
 
 
@@ -355,9 +376,12 @@ def load_pool_settings() -> PoolSettings:
 
 
 def build_provider_pool(
-    settings: PoolSettings, temperature: float, health: ProviderHealth
+    settings: PoolSettings,
+    temperature: float,
+    health: ProviderHealth,
+    budget: CallBudget | None = None,
 ) -> ProviderPool:
-    """One model per configured provider, sharing one health table.
+    """One model per configured provider, sharing one health table (and budget).
 
     Building does not call any API.
     """
@@ -374,4 +398,5 @@ def build_provider_pool(
             for member in settings.members
         ],
         health,
+        budget,
     )

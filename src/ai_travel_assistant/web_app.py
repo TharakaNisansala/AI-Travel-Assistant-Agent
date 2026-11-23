@@ -36,13 +36,13 @@ from __future__ import annotations
 
 import atexit
 import os
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 
 import streamlit as st
 from langgraph.graph.state import CompiledStateGraph
 
-from ai_travel_assistant import web_ui
+from ai_travel_assistant import usage_limits, web_ui
 from ai_travel_assistant.long_term_memory import sqlite_store
 from ai_travel_assistant.request_understanding import QUICK_REPLIES
 from ai_travel_assistant.sri_lanka_places import PROVINCES, weather_question
@@ -68,6 +68,7 @@ from ai_travel_assistant.tool_calling import (
     preference_command,
     sqlite_checkpointer,
 )
+from ai_travel_assistant.usage_limits import UsageGuard, UsageLimitReached
 
 DB_ENV = "TRAVEL_CHAT_DB"  # another SQLite file, e.g. for a demo or a test
 DEV_ENV = "TRAVEL_DEV"  # "1" shows developer-only views (the itinerary JSON)
@@ -125,7 +126,24 @@ def get_graph(db_path: str, public: bool = False) -> CompiledStateGraph:
     atexit.register(stack.close)
     checkpointer = stack.enter_context(sqlite_checkpointer(Path(db_path)))
     store = stack.enter_context(sqlite_store(Path(db_path)))
-    return build_chat_graph(settings, checkpointer, store)
+    if not public:
+        return build_chat_graph(settings, checkpointer, store)
+    guard = get_usage_guard()
+    return build_chat_graph(
+        settings,
+        checkpointer,
+        store,
+        max_history_tokens=guard.limits.max_history_tokens,
+        call_budget=guard.budget,  # counted before every provider call
+    )
+
+
+def get_usage_guard() -> UsageGuard:
+    """The public limits, one set per server process (shared by all visitors).
+
+    ConfigError if a TRAVEL_MAX_... variable is not a whole number of 1+.
+    """
+    return usage_limits.shared_guard()
 
 
 def dev_mode() -> bool:
@@ -176,6 +194,8 @@ def show_notice() -> None:
     kind, text = notice
     if kind == "json":
         st.code(text, language="json")
+    elif kind == "warning":
+        st.warning(text)
     else:
         st.info(text)
 
@@ -361,6 +381,7 @@ def main() -> None:
     state = st.session_state
     state.setdefault("thread_id", new_thread_id())
     state.setdefault("last_steps", [])
+    state.setdefault("messages_sent", 0)  # this visit's messages to the agent
     user_id = sidebar(graph)
 
     values = graph.get_state(_thread_config(state.thread_id)).values
@@ -396,13 +417,25 @@ def main() -> None:
         picked = None
     else:
         picked = weather_picker() if state.picker else suggestions()
-    if prompt := st.chat_input(PLACEHOLDER) or picked:
+    guard = get_usage_guard() if public_mode() else None
+    max_chars = guard.limits.max_message_chars if guard else None
+    if prompt := st.chat_input(PLACEHOLDER, max_chars=max_chars) or picked:
         if run_command(graph, user_id, prompt):
             st.rerun()  # show the reply (and a /new thread) without the LLM
+        if guard is not None:
+            # Public limits, checked before any LLM call (usage_limits.py).
+            refusal = guard.refusal(prompt, state.messages_sent)
+            if refusal:
+                state.notice = ("warning", refusal)
+                st.rerun()
+            state.messages_sent += 1
         with st.chat_message("user", avatar=web_ui.USER_AVATAR):
             st.markdown(prompt)
         try:
-            state.last_steps = render_turn(graph, state.thread_id, prompt, user_id)
+            with guard.request_slot() if guard else nullcontext():
+                state.last_steps = render_turn(graph, state.thread_id, prompt, user_id)
+        except UsageLimitReached as exc:  # its text is written for visitors
+            st.warning(str(exc))
         except Exception as exc:  # keep the page alive after a failed turn
             st.error(f"Request failed: {describe_llm_error(exc)}")
         else:

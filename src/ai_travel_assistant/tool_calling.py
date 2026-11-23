@@ -200,6 +200,7 @@ from ai_travel_assistant.tools import (
 
 if TYPE_CHECKING:  # only for the annotation; llm_basics loads Gemini code
     from ai_travel_assistant.llm_basics import GeminiSettings
+    from ai_travel_assistant.provider_pool import CallBudget
 
 # The tools this agent may use. bind_tools() sends all of them to the LLM, and
 # ToolNode can run any of them (and only them).
@@ -929,6 +930,8 @@ def build_chat_graph(
     *,
     clarify: bool = True,
     persistence_provided: bool = False,
+    max_history_tokens: int | None = MAX_HISTORY_TOKENS,
+    call_budget: CallBudget | None = None,
 ) -> CompiledStateGraph:
     """The full agent of --chat: the CLI, the web page and Studio all use it.
 
@@ -946,6 +949,9 @@ def build_chat_graph(
     settings may also be provider_pool.PoolSettings (public web page only):
     every LLM call then tries the configured providers in order, once each.
     The pool's final error is not transient, so llm_retry never repeats it.
+    call_budget (pool only) is asked before every provider call, and
+    max_history_tokens caps the earlier turns each call sees (the public page
+    sets both from usage_limits; the CLI keeps the defaults).
     """
     from ai_travel_assistant.llm_basics import agent_client_retries, build_llm
     from ai_travel_assistant.provider_pool import (
@@ -959,8 +965,8 @@ def build_chat_graph(
         # Both models share one health table, so a provider whose quota ran
         # out is skipped by the understander and the agent alike.
         health = ProviderHealth()
-        llm = build_provider_pool(settings, temperature=1.0, health=health)
-        precise_llm = build_provider_pool(settings, temperature=0, health=health)
+        llm = build_provider_pool(settings, 1.0, health, call_budget)
+        precise_llm = build_provider_pool(settings, 0, health, call_budget)
     else:
         retries = agent_client_retries(settings)
         llm = build_llm(settings, temperature=1.0, max_retries=retries)
@@ -975,6 +981,7 @@ def build_chat_graph(
         llm_retry=llm_retry_policy(),
         structured_itinerary=True,
         persistence_provided=persistence_provided,
+        max_history_tokens=max_history_tokens,
     )
 
 

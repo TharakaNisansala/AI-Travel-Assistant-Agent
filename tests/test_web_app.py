@@ -14,7 +14,13 @@ import pytest
 pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
-from ai_travel_assistant import llm_basics, tool_calling, web_app, web_ui  # noqa: E402
+from ai_travel_assistant import (  # noqa: E402
+    llm_basics,
+    tool_calling,
+    usage_limits,
+    web_app,
+    web_ui,
+)
 from ai_travel_assistant.request_understanding import QUICK_REPLIES  # noqa: E402
 from ai_travel_assistant.sri_lanka_places import PROVINCES  # noqa: E402
 from tests.test_clarification import FakeUnderstander  # noqa: E402
@@ -39,6 +45,7 @@ def page(monkeypatch, tmp_path):
     built_with.clear()
 
     st.cache_resource.clear()
+    usage_limits.reset_shared_guard()  # fresh counters for every page
     settings = llm_basics.GeminiSettings(model="fake-model", api_key="k")
     monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
     monkeypatch.setenv(web_app.DB_ENV, str(tmp_path / "chat.sqlite"))
@@ -64,6 +71,7 @@ def page(monkeypatch, tmp_path):
 
     yield start
     st.cache_resource.clear()
+    usage_limits.reset_shared_guard()
 
 
 def texts(app) -> list[str]:
@@ -423,3 +431,122 @@ def test_public_mode_with_no_provider_configured_says_so(page, monkeypatch):
     assert not app.exception
     assert "No AI provider is configured." in app.error[0].value
     assert len(app.chat_input) == 0
+
+
+# --- Public mode: usage limits (usage_limits.py) ----------------------------------
+
+
+@pytest.fixture
+def public_page(page, monkeypatch):
+    """A public-mode page with small limits; returns (start, model calls)."""
+    from ai_travel_assistant import provider_pool
+    from ai_travel_assistant.usage_limits import LIMIT_VARIABLES
+
+    for variable, _ in LIMIT_VARIABLES.values():
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv(web_app.PUBLIC_ENV, "1")
+    monkeypatch.setenv("TRAVEL_MAX_MESSAGES_PER_SESSION", "2")
+    monkeypatch.setenv("TRAVEL_MAX_MESSAGE_CHARS", "40")
+    monkeypatch.setattr(provider_pool, "load_pool_settings", pool_settings)
+    return page
+
+
+def warnings(app) -> list[str]:
+    return [w.value for w in app.warning]
+
+
+def test_public_mode_passes_the_limits_to_the_agent(public_page):
+    public_page(streaming())
+    [settings] = built_with
+    guard = web_app.get_usage_guard()
+    assert guard.limits.max_message_chars == 40
+    assert guard.limits.max_history_tokens == 8000
+
+
+def test_a_too_long_message_is_refused_without_an_llm_call(public_page):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    app.chat_input[0].set_value("x" * 41).run()
+    assert not app.exception
+    assert any("limit is 40" in w for w in warnings(app))
+    assert model.calls == [] and texts(app) == []
+    assert app.session_state["messages_sent"] == 0
+
+
+def test_the_session_message_limit_stops_the_third_message(public_page):
+    model = streaming("One.", "Two.", "Three.")
+    app = public_page(model)
+    app.chat_input[0].set_value("What is Ella like?").run()
+    app.chat_input[0].set_value("What is Ella like?").run()
+    calls = len(model.calls)
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert any("limit of 2 messages" in w for w in warnings(app))
+    assert len(model.calls) == calls  # the third never reached the model
+    assert "Three." not in texts(app)
+
+
+def test_chat_commands_do_not_count_against_the_session_limit(public_page):
+    app = public_page(streaming("One."))
+    for _ in range(3):
+        app.chat_input[0].set_value("/prefs").run()
+    assert app.session_state["messages_sent"] == 0
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert "One." in texts(app)
+
+
+def test_a_used_up_daily_budget_is_explained_without_a_call(public_page):
+    from ai_travel_assistant.usage_limits import DAILY_LIMIT_MESSAGE
+
+    model = streaming("Never sent.")
+    app = public_page(model)
+    budget = web_app.get_usage_guard().budget
+    while budget.try_consume():
+        pass
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert DAILY_LIMIT_MESSAGE in warnings(app)
+    assert model.calls == []
+
+
+def test_a_busy_server_asks_the_visitor_to_try_again(public_page):
+    from ai_travel_assistant.usage_limits import BUSY_MESSAGE
+
+    model = streaming("Never sent.")
+    app = public_page(model)
+    guard = web_app.get_usage_guard()
+    guard.slot_wait_s = 0.01
+    held = [guard.request_slot() for _ in range(guard.limits.max_concurrent_requests)]
+    for slot in held:
+        slot.__enter__()
+    try:
+        app.chat_input[0].set_value("What is Ella like?").run()
+    finally:
+        for slot in held:
+            slot.__exit__(None, None, None)
+    assert not app.exception
+    assert BUSY_MESSAGE in warnings(app)
+    assert model.calls == []
+    app.chat_input[0].set_value("What is Ella like?").run()  # slots are free again
+    assert "Never sent." in texts(app)
+
+
+def test_local_mode_has_no_usage_limits(page, monkeypatch):
+    monkeypatch.setenv("TRAVEL_MAX_MESSAGE_CHARS", "5")
+    monkeypatch.setenv("TRAVEL_MAX_MESSAGES_PER_SESSION", "1")
+    app = page(streaming("One.", "Two."))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert "Two." in texts(app)
+    assert warnings(app) == []
+
+
+def test_a_bad_limit_value_is_reported_as_a_configuration_error(
+    public_page, monkeypatch
+):
+    import streamlit as st
+
+    monkeypatch.setenv("TRAVEL_MAX_DAILY_LLM_CALLS", "lots")
+    st.cache_resource.clear()
+    app = AppTest.from_file(APP, default_timeout=30)
+    app.run()
+    assert not app.exception
+    assert "TRAVEL_MAX_DAILY_LLM_CALLS" in app.error[0].value
