@@ -1,13 +1,13 @@
 # AI Travel Assistant (Sri Lanka)
 
-A single-agent travel assistant built with **LangGraph** and **Google Gemini**. Ask it to plan a trip ("Plan 3 days in Ella; I like hiking") and it gathers real data from free public APIs, writes a day-by-day itinerary, checks every place, price and travel time against the tool results, and tells you what it could not confirm.
+A single-agent travel assistant built with **LangGraph** and **Google Gemini** (Groq and Cloudflare Workers AI also work; see [Setup](#setup)). Ask it to plan a trip ("Plan 3 days in Ella; I like hiking") and it gathers real data from free public APIs, writes a day-by-day itinerary, checks every place, price and travel time against the tool results, and tells you what it could not confirm.
 
 It is a learning project, built stage by stage (see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md)). Each module's docstring explains the concept it demonstrates.
 
 ## What it does
 
 - **Plans grounded itineraries.** Sights, distances, prices and forecasts must come from a tool result. Anything else is removed or flagged.
-- **Asks when it must.** "Plan me a trip" gets a question about the place and the number of days, and the chat then carries on from your answer.
+- **Asks when it must.** Before planning, it asks for what is still missing, one question at a time: the place, the number of days, how many people are travelling, their citizenship (ticket prices depend on it) and children when needed, where the trip starts, and whether you want hotel suggestions (and a budget level if so). Each question comes with quick-reply buttons on the web page, and one message that states everything skips the questions.
 - **Edits plans.** Follow-ups such as "make day 2 easier" replace the plan.
 - **Remembers.** Conversations are saved in SQLite and resume after a restart. Preferences ("I'm vegetarian") carry over to new conversations.
 - **Fails honestly.** If an API is down, it says what is missing instead of making it up. The `FAULT_INJECT` switch simulates outages.
@@ -74,8 +74,8 @@ graph TD;
 ```
 
 - **`load_memory` / `save_memory`**: long-term preferences, stored in a LangGraph Store.
-- **`understand_request`**: one Gemini call that reads the message's intent and trip details. It routes the message to the agent, to a clarification question (`ask_clarification` → `wait_for_reply`, a human-in-the-loop interrupt), or to a polite off-topic reply.
-- **`llm` ⇄ `tools`**: the ReAct loop. Gemini picks tools and reads their results, with a cap on rounds (`fallback_response` writes the best answer once the cap is reached).
+- **`understand_request`**: one LLM call that reads the message's intent and trip details. It routes the message to the agent, to a clarification question (`ask_clarification` → `wait_for_reply`, a human-in-the-loop interrupt), or to a polite off-topic reply.
+- **`llm` ⇄ `tools`**: the ReAct loop. The model picks tools and reads their results, with a cap on rounds (`fallback_response` writes the best answer once the cap is reached).
 - **`compose_answer`**: no LLM. It validates the submitted itinerary against a Pydantic schema, repairs it once or salvages what is valid, grounds it against the tool results, and renders it as Markdown.
 
 The interfaces on top of the graph:
@@ -97,7 +97,7 @@ uv sync
 copy .env.example .env      # then set GEMINI_API_KEY and GEMINI_MODEL
 ```
 
-Get a key from [Google AI Studio](https://aistudio.google.com/). Set `GEMINI_MODEL` to a current Flash model ID. The free tier is small (at the time of writing, about 5 requests a minute and 20 a day), and one itinerary takes about 4–5 requests.
+Get a key from [Google AI Studio](https://aistudio.google.com/). Set `GEMINI_MODEL` to a current Flash model ID. The free tier is small (at the time of writing, about 5 requests a minute and 20 a day), and one itinerary takes about 3–5 requests (3–4 in the live evaluation of 2026-11-23, counting the understanding call).
 
 **Using Groq instead.** Set `LLM_PROVIDER=groq` in `.env`, then set `GROQ_API_KEY` (from the [Groq console](https://console.groq.com/keys)) and `GROQ_MODEL` to a current Groq model ID that supports tool use. Every entry point (CLI chat, Streamlit page, Studio, evals) uses whichever provider is set. Switch back with `LLM_PROVIDER=gemini`. `smoke_gemini.py` below always checks Gemini only.
 
