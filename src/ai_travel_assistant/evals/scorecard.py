@@ -8,7 +8,7 @@ What this file demonstrates:
   2. Targets next to results. Each metric shows its §7.3 target and whether
      it was met; metrics without a target are tracked, not judged.
   3. Scoring is free and repeatable. The scorecard reads saved records, so it
-     can be rebuilt any time, e.g. after fixing a scorer, at no Gemini cost.
+     can be rebuilt any time, e.g. after fixing a scorer, at no LLM cost.
      Only --judge spends calls (one per plan).
   4. An honest denominator. Scenarios with no record yet are listed as
      missing; the scorecard never pretends a partial run is complete.
