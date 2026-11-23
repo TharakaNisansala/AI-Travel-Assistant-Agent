@@ -72,7 +72,11 @@ class TripRequest(BaseModel):
         le=60,
         description="Trip length in days. Null if not stated.",
     )
-    interests: list[str] = Field(
+    # The list fields are `| None` only in the schema the LLM sees: models write
+    # null for "none stated", and Groq rejects a tool call whose arguments
+    # break the schema (400 "expected array, but got null"). _null_to_empty
+    # turns null into [], so the value in Python is always a list.
+    interests: list[str] | None = Field(
         default_factory=list,
         description="Short lowercase interests, e.g. ['hiking', 'tea plantations'].",
     )
@@ -124,7 +128,7 @@ class TripRequest(BaseModel):
             "'nationality' and the code works out the ticket category."
         ),
     )
-    party: list[PartyMember] = Field(
+    party: list[PartyMember] | None = Field(
         default_factory=list,
         description=(
             "Who is travelling, only when the traveller listed citizenships, "
@@ -157,6 +161,11 @@ class TripRequest(BaseModel):
     room_budget_currency: Literal["LKR", "USD"] | None = Field(
         default=None, description="The currency of room_budget, as they said it."
     )
+
+    @field_validator("interests", "party", mode="before")
+    @classmethod
+    def _null_to_empty(cls, value: object) -> object:
+        return [] if value is None else value
 
     def missing_critical_fields(self) -> list[str]:
         """Names of the critical fields the traveller has not given yet."""
