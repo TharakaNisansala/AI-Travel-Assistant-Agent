@@ -58,5 +58,5 @@ Details as built:
 
 - Provider-neutral wording in the CLI and eval runner messages.
 - A per-provider schema check in the tests (for example, strict JSON-schema validation like Groq's) before live runs.
-- Optional automatic fallback for the interactive chat, kept off for evaluation.
+- Optional automatic fallback for the interactive chat, kept off for evaluation. (Done for the public web page only, with `TRAVEL_PUBLIC=1`: see [ADR-0005](0005-public-provider-fallback.md).)
 - A larger-limit model per provider for itineraries, chosen with `check_groq_models.py` and re-evaluated before use.

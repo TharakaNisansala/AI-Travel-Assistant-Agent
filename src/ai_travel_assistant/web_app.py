@@ -609,8 +609,18 @@ def run_public_safely() -> None:
         st.error(VISITOR_UNEXPECTED)
 
 
-if __name__ == "__main__":  # streamlit run executes the file as __main__
+def run() -> None:
+    """One script run of the page: public (with its safety net) or local.
+
+    deploy/streamlit_app.py (the Streamlit Community Cloud entry point) calls
+    this; `streamlit run src/ai_travel_assistant/web_app.py` does the same
+    through the block below.
+    """
     if public_mode():
         run_public_safely()
     else:
         main()
+
+
+if __name__ == "__main__":  # streamlit run executes the file as __main__
+    run()

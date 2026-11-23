@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Streamlit Secrets (local copy of the Community Cloud secrets)
+.streamlit/secrets.toml
 
 # Virtual environment
 .venv/
