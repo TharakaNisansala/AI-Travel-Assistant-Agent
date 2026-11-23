@@ -85,6 +85,8 @@ def test_schema_descriptions_reach_the_json_schema():
     # These descriptions are what Gemini reads, so they must be in the schema.
     props = TripRequest.model_json_schema()["properties"]
     assert "Null if" in props["destination"]["description"]
+    # Seen live: "two Indian adults" left children null and asked about it.
+    assert "0 when they say everyone is an adult" in props["children"]["description"]
     assert set(props) == {
         "destination",
         "days",

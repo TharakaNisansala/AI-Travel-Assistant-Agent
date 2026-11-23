@@ -104,7 +104,8 @@ class TripRequest(BaseModel):
         ge=0,
         description=(
             "How many of the travellers are children, only if the traveller "
-            "said so. Null otherwise."
+            "said so. 0 when they say everyone is an adult, e.g. 'two Indian "
+            "adults'. Null otherwise."
         ),
     )
     pace: Literal["relaxed", "moderate", "packed"] | None = Field(
