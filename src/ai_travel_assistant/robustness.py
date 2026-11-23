@@ -175,6 +175,85 @@ def describe_llm_error(exc: BaseException) -> str:
     return f"Something went wrong ({type(exc).__name__}). Please try again."
 
 
+# --- Messages for public visitors (TRAVEL_PUBLIC=1) -------------------------------
+#
+# describe_llm_error() above is for the developer (CLI, local page): it may
+# say "switch LLM_PROVIDER in .env". A public visitor can do nothing with
+# that, so the public page uses these instead: plain words, what to do next,
+# and never a key, a provider's error text, a type name or a setting name.
+
+VISITOR_QUOTA = (
+    "This demo has used up today's free AI allowance. Please try again later "
+    "today or tomorrow."
+)
+VISITOR_RATE_LIMIT = (
+    "The free AI service is getting too many requests right now. "
+    "Please wait {wait} and try again."
+)
+VISITOR_BUSY = (
+    "The AI service is busy or slow to respond at the moment. Please try "
+    "again in a minute."
+)
+VISITOR_UNAVAILABLE = (
+    "Live AI is temporarily unavailable on this demo. The problem is on our "
+    "side, not with your request. Please try again later."
+)
+VISITOR_UNEXPECTED = (
+    "Something went wrong while planning your trip. Please try again, or "
+    "rephrase your request."
+)
+VISITOR_NOT_CONFIGURED = (
+    "Live AI is not available on this demo right now. Please come back later."
+)
+
+ErrorCategory = Literal["quota", "rate_limit", "busy", "unavailable", "unexpected"]
+
+
+def error_category(exc: BaseException) -> ErrorCategory:
+    """One plain category for a failed turn (safe to log: no error text)."""
+    from ai_travel_assistant.provider_pool import AllProvidersUnavailable
+
+    if isinstance(exc, AllProvidersUnavailable):
+        return {
+            "quota": "quota",
+            "rate_limit": "rate_limit",
+            "busy": "busy",
+        }.get(exc.kind, "unavailable")
+    if is_quota_exhausted(exc):
+        return "quota"
+    if is_rate_limited(exc):
+        return "rate_limit"
+    if is_transient_llm_error(exc):
+        return "busy"
+    if error_status(exc) in (400, 401, 403, 404):
+        return "unavailable"
+    return "unexpected"
+
+
+def _wait_text(seconds: float | None) -> str:
+    """'about 40 seconds', 'about 3 minutes'; 'a minute' when unknown."""
+    if seconds is None or seconds <= 0 or seconds > 600:
+        return "a minute"
+    if seconds < 60:
+        return f"about {max(5, round(seconds / 5) * 5)} seconds"
+    minutes = round(seconds / 60)
+    return "about a minute" if minutes == 1 else f"about {minutes} minutes"
+
+
+def describe_error_for_visitor(exc: BaseException) -> str:
+    """A failed turn in words a public visitor can act on. Never the error text."""
+    category = error_category(exc)
+    if category == "rate_limit":
+        return VISITOR_RATE_LIMIT.format(
+            wait=_wait_text(getattr(exc, "retry_after_s", None))
+        )
+    return {
+        "quota": VISITOR_QUOTA,
+        "busy": VISITOR_BUSY,
+        "unavailable": VISITOR_UNAVAILABLE,
+    }.get(category, VISITOR_UNEXPECTED)
+
+
 # --- Tool errors ------------------------------------------------------------------
 
 

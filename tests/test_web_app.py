@@ -22,6 +22,7 @@ from ai_travel_assistant import (  # noqa: E402
     web_app,
     web_ui,
 )
+from ai_travel_assistant.provider_pool import AllProvidersUnavailable  # noqa: E402
 from ai_travel_assistant.request_understanding import QUICK_REPLIES  # noqa: E402
 from ai_travel_assistant.sri_lanka_places import PROVINCES  # noqa: E402
 from tests.test_clarification import FakeUnderstander  # noqa: E402
@@ -78,6 +79,15 @@ def page(monkeypatch, tmp_path):
     st.cache_resource.clear()
     usage_limits.reset_shared_guard()
     public_sessions.reset_shared_janitor()
+
+
+def page_and_errors(app) -> str:
+    """Every text on the page, errors and the sidebar included."""
+    parts = [m.value for m in app.markdown] + [c.value for c in app.caption]
+    for kind in ("error", "warning", "info", "success", "exception"):
+        parts += [str(getattr(e, "value", e)) for e in app.get(kind)]
+    parts += [b.label for b in app.button] + [t.label for t in app.text_input]
+    return "\n".join(str(p) for p in parts)
 
 
 def texts(app) -> list[str]:
@@ -421,7 +431,7 @@ def test_public_mode_builds_the_agent_with_the_provider_pool(page, monkeypatch):
     assert "Ella is green." in texts(app)
 
 
-def test_public_mode_with_no_provider_configured_says_so(page, monkeypatch):
+def test_public_mode_with_no_provider_configured_says_so(page, monkeypatch, caplog):
     from ai_travel_assistant import provider_pool
 
     def none_configured():
@@ -435,7 +445,12 @@ def test_public_mode_with_no_provider_configured_says_so(page, monkeypatch):
     app = AppTest.from_file(APP, default_timeout=30)
     app.run()
     assert not app.exception
-    assert "No AI provider is configured." in app.error[0].value
+    # Change 6: plain words for the visitor; the detail goes to the server log.
+    from ai_travel_assistant.robustness import VISITOR_NOT_CONFIGURED
+
+    assert app.error[0].value == VISITOR_NOT_CONFIGURED
+    assert "No AI provider is configured." not in page_and_errors(app)
+    assert "No AI provider is configured." in caplog.text
     assert len(app.chat_input) == 0
 
 
@@ -547,7 +562,7 @@ def test_local_mode_has_no_usage_limits(page, monkeypatch):
 
 
 def test_a_bad_limit_value_is_reported_as_a_configuration_error(
-    public_page, monkeypatch
+    public_page, monkeypatch, caplog
 ):
     import streamlit as st
 
@@ -556,7 +571,12 @@ def test_a_bad_limit_value_is_reported_as_a_configuration_error(
     app = AppTest.from_file(APP, default_timeout=30)
     app.run()
     assert not app.exception
-    assert "TRAVEL_MAX_DAILY_LLM_CALLS" in app.error[0].value
+    # Change 6: the setting's name is for the site owner (server log) only.
+    from ai_travel_assistant.robustness import VISITOR_NOT_CONFIGURED
+
+    assert app.error[0].value == VISITOR_NOT_CONFIGURED
+    assert "TRAVEL_MAX_DAILY_LLM_CALLS" not in page_and_errors(app)
+    assert "TRAVEL_MAX_DAILY_LLM_CALLS" in caplog.text
 
 
 # --- Public mode: visitor sessions and privacy (public_sessions.py) ---------------
@@ -693,7 +713,9 @@ def test_dev_views_are_never_on_in_public(monkeypatch):
     assert web_app.dev_mode()
 
 
-def test_a_bad_thread_idle_time_is_a_configuration_error(public_page, monkeypatch):
+def test_a_bad_thread_idle_time_is_a_configuration_error(
+    public_page, monkeypatch, caplog
+):
     import streamlit as st
 
     monkeypatch.setenv(public_sessions.THREAD_IDLE_ENV, "soon")
@@ -701,7 +723,12 @@ def test_a_bad_thread_idle_time_is_a_configuration_error(public_page, monkeypatc
     app = AppTest.from_file(APP, default_timeout=30)
     app.run()
     assert not app.exception
-    assert public_sessions.THREAD_IDLE_ENV in app.error[0].value
+    # Change 6: the setting's name is for the site owner (server log) only.
+    from ai_travel_assistant.robustness import VISITOR_NOT_CONFIGURED
+
+    assert app.error[0].value == VISITOR_NOT_CONFIGURED
+    assert public_sessions.THREAD_IDLE_ENV not in page_and_errors(app)
+    assert public_sessions.THREAD_IDLE_ENV in caplog.text
 
 
 # --- Public mode: Sample Demo Mode (sample_trip.py) ---------------------------------
@@ -829,3 +856,101 @@ def test_local_mode_has_no_sample_buttons(page):
     app = page(streaming())
     keys = {b.key for b in app.button}
     assert not keys & {"sidebar-sample", "empty-sample", "offer-sample"}
+
+
+# --- Public mode: visitor-friendly errors (robustness.describe_error_for_visitor) ---
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            "quota",
+            "This demo has used up today's free AI allowance.",
+        ),
+        ("rate_limit", "The free AI service is getting too many requests"),
+        ("busy", "The AI service is busy or slow"),
+        ("rejected", "Live AI is temporarily unavailable on this demo."),
+    ],
+)
+def test_a_failed_public_turn_shows_a_plain_message_and_the_sample(
+    public_page, caplog, error, expected
+):
+    from tests.test_visitor_errors import FORBIDDEN
+
+    failure = AllProvidersUnavailable([("gemini", error)], 30)
+    failure.__cause__ = RuntimeError(
+        "key=AIzaSyFAKE-KEY-123 GEMINI_API_KEY LLM_PROVIDER .env Traceback"
+    )
+    app = public_page(streaming(fail_on={0: failure}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert not app.exception
+    [shown] = app.error
+    assert shown.value.startswith(expected)
+    assert web_app.SAMPLE_OFFER in [i.value for i in app.info]
+    page = page_and_errors(app)
+    for forbidden in FORBIDDEN:
+        assert forbidden not in page
+        assert forbidden not in caplog.text  # the server log stays clean too
+    assert "Public turn failed" in caplog.text
+
+
+def test_an_unexpected_turn_error_shows_no_type_name_or_text(public_page, caplog):
+    from ai_travel_assistant.robustness import VISITOR_UNEXPECTED
+
+    app = public_page(streaming(fail_on={0: RuntimeError("secret detail /srv/x.py")}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert app.error[0].value == VISITOR_UNEXPECTED
+    page = page_and_errors(app)
+    assert "RuntimeError" not in page and "secret detail" not in page
+    assert "secret detail" not in caplog.text
+
+
+def test_an_unexpected_page_error_never_shows_a_traceback_in_public(
+    public_page, monkeypatch
+):
+    from ai_travel_assistant.robustness import VISITOR_UNEXPECTED
+
+    app = public_page(streaming())
+
+    def broken(*args):
+        raise RuntimeError("boom at /srv/app/web_ui.py")
+
+    monkeypatch.setattr(web_ui, "hero_html", broken)
+    app.run()
+    assert not app.exception  # no Streamlit traceback box
+    assert [e.value for e in app.error] == [VISITOR_UNEXPECTED]
+    assert "web_ui.py" not in page_and_errors(app)
+
+
+def test_local_mode_still_shows_its_errors_to_the_developer(page, monkeypatch):
+    app = page(streaming())
+
+    def broken(*args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(web_ui, "hero_html", broken)
+    app.run()
+    assert app.exception  # unchanged: the developer sees the real error
+
+
+def test_a_blank_public_message_is_refused_without_an_llm_call(public_page):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    app.chat_input[0].set_value("   ").run()
+    assert web_app.BLANK_MESSAGE in [w.value for w in app.warning]
+    assert model.calls == []
+    assert app.session_state["messages_sent"] == 0
+
+
+def test_a_public_turn_says_it_may_take_a_while(public_page):
+    failure = AllProvidersUnavailable([("gemini", "busy")])
+    app = public_page(streaming(fail_on={0: failure}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert web_app.SLOW_NOTE in [c.value for c in app.caption]
+
+
+def test_local_turns_have_no_slow_note(page):
+    app = page(streaming(fail_on={0: RuntimeError("x")}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert web_app.SLOW_NOTE not in [c.value for c in app.caption]

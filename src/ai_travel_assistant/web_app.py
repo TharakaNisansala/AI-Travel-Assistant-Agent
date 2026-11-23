@@ -35,6 +35,7 @@ What this file demonstrates:
 from __future__ import annotations
 
 import atexit
+import logging
 import os
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
@@ -70,11 +71,16 @@ from ai_travel_assistant.tool_calling import (
 )
 from ai_travel_assistant.usage_limits import UsageGuard, UsageLimitReached
 
+logger = logging.getLogger(__name__)
+
 DB_ENV = "TRAVEL_CHAT_DB"  # another SQLite file, e.g. for a demo or a test
 DEV_ENV = "TRAVEL_DEV"  # "1" shows developer-only views (the itinerary JSON)
 # "1" for the public deployment: provider fallback (provider_pool.py) and the
 # other public-only behaviour. Off by default: local use stays as it was.
 PUBLIC_ENV = "TRAVEL_PUBLIC"
+# Public mode: shown while a turn runs, so a slow free tier does not look stuck.
+SLOW_NOTE = "Planning a full trip can take up to a minute on free AI services."
+BLANK_MESSAGE = "Please type a question or a trip request first."
 PLACEHOLDER = "Plan 3 days in Ella; I like hiking and scenic places"
 # Browser versions of the two command replies written for the terminal.
 QUIT_NOTE = (
@@ -260,11 +266,19 @@ def itinerary_markdown(itinerary: dict | None) -> str | None:
         return None
 
 
-def render_turn(graph: CompiledStateGraph, thread_id: str, text: str, user_id: str):
+def render_turn(
+    graph: CompiledStateGraph,
+    thread_id: str,
+    text: str,
+    user_id: str,
+    public: bool = False,
+):
     """Stream one turn into an assistant message; return its steps."""
     steps: list[str] = []
     with st.chat_message("assistant", avatar=web_ui.ASSISTANT_AVATAR):
         status = st.status("Thinking…", expanded=False)
+        if public:
+            st.caption(SLOW_NOTE)
         reply = st.empty()
         typed = ""
         for event in stream_turn(graph, thread_id, text, user_id=user_id):
@@ -448,7 +462,12 @@ def main() -> None:
     st.markdown(web_ui.hero_html(model_label()), unsafe_allow_html=True)
 
     from ai_travel_assistant.llm_basics import ConfigError
-    from ai_travel_assistant.robustness import describe_llm_error
+    from ai_travel_assistant.robustness import (
+        VISITOR_NOT_CONFIGURED,
+        describe_error_for_visitor,
+        describe_llm_error,
+        error_category,
+    )
 
     public = public_mode()
     state = st.session_state
@@ -456,12 +475,18 @@ def main() -> None:
     try:
         graph = get_graph(os.environ.get(DB_ENV, str(DEFAULT_CHAT_DB)), public=public)
     except ConfigError as exc:
-        st.error(f"Configuration error: {exc}")
-        if public:  # live AI cannot start, but the sample needs none
-            if state.view == SAMPLE_VIEW:
-                sample_view(can_go_back=False)
-            else:
-                sample_offer()
+        if not public:
+            st.error(f"Configuration error: {exc}")
+            st.stop()
+        # The details (variable names, never values) go to the server log,
+        # where the site owner looks; the visitor gets plain words.
+        logger.error("Public page cannot start live AI: %s", exc)
+        st.error(VISITOR_NOT_CONFIGURED)
+        # Live AI cannot start, but the sample needs none.
+        if state.view == SAMPLE_VIEW:
+            sample_view(can_go_back=False)
+        else:
+            sample_offer()
         st.stop()
 
     state.setdefault("thread_id", new_thread_id())
@@ -517,6 +542,9 @@ def main() -> None:
     if prompt := st.chat_input(PLACEHOLDER, max_chars=max_chars) or picked:
         if run_command(graph, user_id, prompt):
             st.rerun()  # show the reply (and a /new thread) without the LLM
+        if public and not prompt.strip():
+            state.notice = ("warning", BLANK_MESSAGE)
+            st.rerun()
         if guard is not None:
             # Public limits, checked before any LLM call (usage_limits.py).
             refusal = guard.refusal(prompt, state.messages_sent)
@@ -534,15 +562,26 @@ def main() -> None:
             janitor.touch(state.thread_id)  # in use: not swept mid-turn
         try:
             with guard.request_slot() if guard else nullcontext():
-                state.last_steps = render_turn(graph, state.thread_id, prompt, user_id)
+                state.last_steps = render_turn(
+                    graph, state.thread_id, prompt, user_id, public
+                )
         except UsageLimitReached as exc:  # its text is written for visitors
             st.warning(str(exc))
             if public:
                 state.offer_sample = True
                 sample_offer()
         except Exception as exc:  # keep the page alive after a failed turn
-            st.error(f"Request failed: {describe_llm_error(exc)}")
-            if public:
+            if not public:
+                st.error(f"Request failed: {describe_llm_error(exc)}")
+            else:
+                # Category and type name only: provider errors can echo
+                # request details, so their text is never logged or shown.
+                logger.warning(
+                    "Public turn failed: %s (%s)",
+                    error_category(exc),
+                    type(exc).__name__,
+                )
+                st.error(describe_error_for_visitor(exc))
                 state.offer_sample = True
                 sample_offer()
         else:
@@ -554,5 +593,24 @@ def main() -> None:
             st.rerun()  # redraw from the saved thread (sidebar included)
 
 
+def run_public_safely() -> None:
+    """main() for the public page, with a last safety net.
+
+    Anything unexpected becomes a plain message instead of Streamlit's
+    traceback (which can show file paths and internal names). st.rerun() and
+    st.stop() raise BaseException subclasses, so they pass straight through.
+    """
+    try:
+        main()
+    except Exception as exc:  # noqa: BLE001 - the visitor must never see a trace
+        from ai_travel_assistant.robustness import VISITOR_UNEXPECTED
+
+        logger.error("Public page error (%s)", type(exc).__name__)
+        st.error(VISITOR_UNEXPECTED)
+
+
 if __name__ == "__main__":  # streamlit run executes the file as __main__
-    main()
+    if public_mode():
+        run_public_safely()
+    else:
+        main()
