@@ -26,6 +26,10 @@ What this file demonstrates:
   6. A picker that never calls the LLM. The weather card opens the 9
      provinces, a province opens its districts (sri_lanka_places.py), and only
      the chosen district is sent, as one plain question.
+  7. Chat commands without the LLM. /new, /prefs, /forget, /itinerary and
+     /quit typed in the chat box go to the terminal's chat_command, never to
+     the agent. Only how a reply is shown is decided here: as a one-time
+     notice, JSON only in dev mode, and /quit leaves the browser chat open.
 """
 
 from __future__ import annotations
@@ -53,9 +57,11 @@ from ai_travel_assistant.tool_calling import (
     DEFAULT_CHAT_DB,
     DEFAULT_USER,
     FORGET_COMMAND,
+    ITINERARY_COMMAND,
     NO_ITINERARY,
     PREFS_COMMAND,
     build_chat_graph,
+    chat_command,
     itinerary_json,
     new_thread_id,
     pending_question,
@@ -66,6 +72,15 @@ from ai_travel_assistant.tool_calling import (
 DB_ENV = "TRAVEL_CHAT_DB"  # another SQLite file, e.g. for a demo or a test
 DEV_ENV = "TRAVEL_DEV"  # "1" shows developer-only views (the itinerary JSON)
 PLACEHOLDER = "Plan 3 days in Ella; I like hiking and scenic places"
+# Browser versions of the two command replies written for the terminal.
+QUIT_NOTE = (
+    "This conversation stays open in your browser and is saved. Close the tab "
+    "when you are done, or type /new to start another one."
+)
+JSON_DEV_ONLY = (
+    "The raw itinerary JSON is a developer view. Use “Download plan (PDF)” "
+    "in the sidebar for your plan."
+)
 
 
 @st.cache_resource(show_spinner="Starting the agent…")
@@ -94,6 +109,49 @@ def dev_mode() -> bool:
 
 def _thread_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
+
+
+def switch_thread(thread_id: str) -> None:
+    """Make thread_id the active conversation; the old one stays saved."""
+    state = st.session_state
+    state.thread_id = thread_id
+    state.last_steps = []
+    state.picker = None
+
+
+def run_command(graph: CompiledStateGraph, user_id: str, text: str) -> bool:
+    """Handle a chat command without the LLM; True if the text was one.
+
+    chat_command (shared with the terminal chats) decides what is a command
+    and does the work. This only picks how its reply is shown: a notice that
+    the next rerun draws once (see show_notice).
+    """
+    state = st.session_state
+    result = chat_command(graph, state.thread_id, user_id, text)
+    if result is None:
+        return False
+    is_itinerary = text.strip().lower() == ITINERARY_COMMAND
+    if result.quit:  # the browser chat has nothing to close
+        state.notice = ("info", QUIT_NOTE)
+    elif is_itinerary and result.reply != NO_ITINERARY:
+        state.notice = ("json", result.reply) if dev_mode() else ("info", JSON_DEV_ONLY)
+    else:
+        state.notice = ("info", result.reply)
+    if result.thread_id:  # /new
+        switch_thread(result.thread_id)
+    return True
+
+
+def show_notice() -> None:
+    """Draw the last command's reply, once: pop() removes it for later reruns."""
+    notice = st.session_state.pop("notice", None)
+    if notice is None:
+        return
+    kind, text = notice
+    if kind == "json":
+        st.code(text, language="json")
+    else:
+        st.info(text)
 
 
 def model_label() -> str | None:
@@ -288,6 +346,7 @@ def main() -> None:
         with st.expander(label):
             for line in state.last_steps:
                 st.write(line)
+    show_notice()  # the last chat command's reply, drawn once
     waiting = pending_question(graph, state.thread_id)
     if waiting:
         st.info("The assistant is waiting for your answer to its question.")
@@ -300,6 +359,8 @@ def main() -> None:
     else:
         picked = weather_picker() if state.picker else suggestions()
     if prompt := st.chat_input(PLACEHOLDER) or picked:
+        if run_command(graph, user_id, prompt):
+            st.rerun()  # show the reply (and a /new thread) without the LLM
         with st.chat_message("user", avatar=web_ui.USER_AVATAR):
             st.markdown(prompt)
         try:

@@ -259,3 +259,108 @@ def test_the_picker_goes_back_to_provinces_and_to_the_cards(page):
     assert len(picker_buttons(app, "province")) == 9
     app.button(key="picker-back").click().run()
     assert len(suggestion_buttons(app)) == len(web_ui.SUGGESTIONS)
+
+
+# --- Chat commands typed in the chat box (no LLM) -----------------------------------
+
+
+def infos(app) -> list[str]:
+    return [i.value for i in app.info]
+
+
+def type_in_chat(app, text: str):
+    app.chat_input[0].set_value(text).run()
+    assert not app.exception, app.exception
+
+
+@pytest.mark.parametrize(
+    ("command", "reply"),
+    [
+        ("/prefs", "No saved preferences yet."),
+        ("/forget", "Forgot 0 saved preferences."),
+        ("  /PREFS ", "No saved preferences yet."),  # any case or spacing
+    ],
+)
+def test_preference_commands_answer_without_the_llm(page, command, reply):
+    model = streaming("This must not be used.")
+    app = page(model)
+    type_in_chat(app, command)
+    assert reply in infos(app)
+    assert texts(app) == []  # the command is not a chat message
+    assert model.calls == []
+
+
+def test_new_starts_an_empty_thread_and_keeps_the_old_one(page):
+    model = streaming("Ella is green.")
+    app = page(model)
+    type_in_chat(app, "What is Ella like?")
+    first_thread = app.session_state["thread_id"]
+
+    type_in_chat(app, "/new")
+    new_thread = app.session_state["thread_id"]
+    assert new_thread != first_thread
+    assert f"New conversation: {new_thread}" in infos(app)
+    assert texts(app) == []
+    assert len(model.calls) == 1  # only the Ella question used the model
+
+
+def test_quit_keeps_the_browser_conversation(page):
+    app = page(streaming("Ella is green."))
+    type_in_chat(app, "What is Ella like?")
+    thread = app.session_state["thread_id"]
+
+    type_in_chat(app, "/quit")
+    assert web_app.QUIT_NOTE in infos(app)
+    assert app.session_state["thread_id"] == thread
+    assert texts(app) == ["What is Ella like?", "Ella is green."]
+    assert not any("Bye!" in text for text in infos(app))  # the terminal reply
+
+
+def test_itinerary_without_a_plan_says_so(page):
+    model = streaming()
+    app = page(model)
+    type_in_chat(app, "/itinerary")
+    assert tool_calling.NO_ITINERARY in infos(app)
+    assert model.calls == []
+
+
+@pytest.mark.usefixtures("tools")
+def test_itinerary_json_is_a_developer_view(page):
+    app = page(streaming(gather(), submit(plan())))
+    type_in_chat(app, "Plan 2 days in Ella.")
+
+    type_in_chat(app, "/itinerary")
+    assert web_app.JSON_DEV_ONLY in infos(app)
+    assert not any('"days": 2' in code.value for code in app.code)
+
+
+@pytest.mark.usefixtures("tools")
+def test_itinerary_shows_the_json_in_dev_mode(page, monkeypatch):
+    monkeypatch.setenv(web_app.DEV_ENV, "1")
+    app = page(streaming(gather(), submit(plan())))
+    type_in_chat(app, "Plan 2 days in Ella.")
+
+    type_in_chat(app, "/itinerary")
+    main_code = [c.value for c in app.main.code]
+    assert any('"days": 2' in value for value in main_code)
+
+
+def test_a_command_reply_is_shown_once(page):
+    app = page(streaming())
+    type_in_chat(app, "/prefs")
+    assert "No saved preferences yet." in infos(app)
+    app.run()  # any later rerun, e.g. a click elsewhere
+    assert "No saved preferences yet." not in infos(app)
+
+
+def test_a_command_while_a_question_waits_keeps_the_question(page):
+    model = streaming()
+    app = page(model)
+    type_in_chat(app, "Plan me a trip.")
+    calls = len(model.calls)
+
+    type_in_chat(app, "/prefs")
+    assert "No saved preferences yet." in infos(app)
+    assert texts(app)[-1] == "Where in Sri Lanka would you like to go?"
+    assert any("waiting for your answer" in text for text in infos(app))
+    assert len(model.calls) == calls
