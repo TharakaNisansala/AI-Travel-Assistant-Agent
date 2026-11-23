@@ -1,0 +1,72 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-galle-luxury-march",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:26:38.338924Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "I want a luxury 5-day holiday in Galle in March, nice and relaxed.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Galle",
+        "days": 5,
+        "interests": [],
+        "budget": "luxury",
+        "travel_dates": "March",
+        "travellers": null,
+        "children": null,
+        "pace": "relaxed",
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "How many people are travelling, including you? Prices are per person, so this sets the cost for your group.",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 0.985
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "I want a luxury 5-day holiday in Galle in March, nice and relaxed.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "ddb4fd14-0cb2-44b4-8b3d-8828c8ce9694"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "How many people are travelling, including you? Prices are per person, so this sets the cost for your group.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "6bb95eaa-fd82-4cd2-acfd-ed5c9b3d34d4",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

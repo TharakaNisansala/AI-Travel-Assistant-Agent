@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-clarify-vague",
+  "category": "routing",
+  "started_at": "2026-11-23T06:27:56.149205Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Help me plan a holiday.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": null,
+        "days": null,
+        "interests": [],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": null,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "destination",
+        "days",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "Where in Sri Lanka would you like to go?",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 0.968
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Help me plan a holiday.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "6368672b-87af-40a8-89c6-fba68fe4b914"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "Where in Sri Lanka would you like to go?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "367c21c7-3bf3-4e24-af19-0bfc79fa53a7",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

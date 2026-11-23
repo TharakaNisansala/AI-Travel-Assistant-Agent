@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-ella-couple-hiking",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:26:23.977892Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan a 3-day trip to Ella for two people; we love hiking and tea plantations.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Ella",
+        "days": 3,
+        "interests": [
+          "hiking",
+          "tea plantations"
+        ],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": 2,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "What citizenship do the travellers have? Many sites charge Sri Lankan, SAARC and other foreign citizens different ticket prices (citizenship counts, not where you live).",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 1.062
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan a 3-day trip to Ella for two people; we love hiking and tea plantations.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "a72e9ca0-95bf-4c8e-a0d4-dbe636c58e4b"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "What citizenship do the travellers have? Many sites charge Sri Lankan, SAARC and other foreign citizens different ticket prices (citizenship counts, not where you live).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "8180a2bf-474f-4dc8-8fad-5d3a80e03adf",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

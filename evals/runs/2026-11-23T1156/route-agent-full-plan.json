@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-agent-full-plan",
+  "category": "routing",
+  "started_at": "2026-11-23T06:28:23.517853Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan 2 days in Jaffna, focused on food, just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel.",
+      "route": "agent",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Jaffna",
+        "days": 2,
+        "interests": [
+          "food"
+        ],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": 1,
+        "children": 0,
+        "pace": null,
+        "nationality": "Sri Lankan",
+        "citizenship": "local",
+        "party": [
+          {
+            "nationality": "Sri Lankan",
+            "age_group": "adult",
+            "count": 1
+          }
+        ],
+        "origin": "Colombo",
+        "wants_hotels": false,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [],
+      "question": null,
+      "itinerary": null,
+      "message_count": 1,
+      "llm_calls": 1,
+      "seconds": 1.359
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan 2 days in Jaffna, focused on food, just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "507878df-c3d0-4480-a016-088bc74ed329"
+      }
+    }
+  ],
+  "error": null
+}

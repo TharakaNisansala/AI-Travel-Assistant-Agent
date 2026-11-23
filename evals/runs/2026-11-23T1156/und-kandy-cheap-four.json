@@ -1,0 +1,71 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-kandy-cheap-four",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:26:25.036837Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "A cheap 2-day trip to Kandy for the four of us; we're all Sri Lankan citizens.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Kandy",
+        "days": 2,
+        "interests": [],
+        "budget": "budget",
+        "travel_dates": null,
+        "travellers": 4,
+        "children": null,
+        "pace": null,
+        "nationality": "Sri Lankan",
+        "citizenship": "local",
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "children",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "How many of the 4 travellers are children? Child ticket rules differ from site to site.",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 1.359
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "A cheap 2-day trip to Kandy for the four of us; we're all Sri Lankan citizens.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "02d41f82-bb84-48ef-ac0a-36ee9837c13c"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "How many of the 4 travellers are children? Child ticket rules differ from site to site.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "69c869aa-4a87-488d-a708-c21f9f31501d",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

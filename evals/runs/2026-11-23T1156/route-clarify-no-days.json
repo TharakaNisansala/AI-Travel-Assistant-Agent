@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-clarify-no-days",
+  "category": "routing",
+  "started_at": "2026-11-23T06:28:08.998286Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Make an itinerary for Anuradhapura.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Anuradhapura",
+        "days": null,
+        "interests": [],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": null,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "days",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "How many days would you like to spend in Anuradhapura?",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 2.484
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Make an itinerary for Anuradhapura.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "b6ab3d3a-1fb8-418a-b7f2-feb57da60ff5"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "How many days would you like to spend in Anuradhapura?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "d007e91b-57de-4722-8ad6-b1adad88ffd0",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

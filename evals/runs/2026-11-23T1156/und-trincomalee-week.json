@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-trincomalee-week",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:27:17.799059Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan a 7-day trip to Trincomalee for diving and beaches.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Trincomalee",
+        "days": 7,
+        "interests": [
+          "diving",
+          "beaches"
+        ],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": null,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "How many people are travelling, including you? Prices are per person, so this sets the cost for your group.",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 0.844
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan a 7-day trip to Trincomalee for diving and beaches.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "bfcd30cc-8235-4352-943e-2150ad997080"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "How many people are travelling, including you? Prices are per person, so this sets the cost for your group.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "d16d1893-72ee-4e0c-949a-a7a27bf60ac0",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}
