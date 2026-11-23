@@ -18,12 +18,19 @@ error handling (timeout -> TimeoutError, 429 -> BusyError, ...) still applies to
 the final attempt.
 
 The cache lives in process memory only: it is empty after a restart and is not
-shared between processes. That is enough for a CLI; a server would use Redis or
+shared between processes. It IS shared by every thread of the process, so on
+the web page (one thread per visitor) each cache guards its entries with a
+lock. The lock covers only the dictionary work, never a network request: the
+services call get(), fetch on a miss with no lock held, then set(). Two
+visitors who miss at the same moment may both fetch; the later set() wins,
+which is harmless for these read-only public data. That is enough for a CLI
+and a small demo server; a bigger server would use Redis or
 similar later.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Hashable
@@ -116,6 +123,7 @@ def send_with_retry(
 
 _MISSING = object()
 _ALL_CACHES: list[TTLCache] = []
+_ALL_CACHES_LOCK = threading.Lock()
 
 
 class TTLCache:
@@ -123,6 +131,10 @@ class TTLCache:
 
     Use get(key) and compare with `TTLCache.MISSING`, so a cached None or empty
     result is still a hit.
+
+    Thread-safe: every read, write, expiry and eviction happens under one lock
+    per cache, so visitors on different threads cannot corrupt the
+    OrderedDict (move_to_end and popitem are not safe to interleave).
     """
 
     MISSING = _MISSING
@@ -139,33 +151,41 @@ class TTLCache:
         self.maxsize = maxsize
         self.clock = clock
         self._entries: OrderedDict[Hashable, tuple[float, Any]] = OrderedDict()
-        _ALL_CACHES.append(self)
+        self._lock = threading.Lock()
+        with _ALL_CACHES_LOCK:
+            _ALL_CACHES.append(self)
 
     def get(self, key: Hashable) -> Any:
-        entry = self._entries.get(key)
-        if entry is None:
-            return _MISSING
-        expires_at, value = entry
-        if self.clock() >= expires_at:
-            del self._entries[key]
-            return _MISSING
-        self._entries.move_to_end(key)  # recently used: evicted last
-        return value
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return _MISSING
+            expires_at, value = entry
+            if self.clock() >= expires_at:
+                del self._entries[key]
+                return _MISSING
+            self._entries.move_to_end(key)  # recently used: evicted last
+            return value
 
     def set(self, key: Hashable, value: Any) -> None:
-        self._entries[key] = (self.clock() + self.ttl_s, value)
-        self._entries.move_to_end(key)
-        while len(self._entries) > self.maxsize:
-            self._entries.popitem(last=False)  # the least recently used
+        with self._lock:
+            self._entries[key] = (self.clock() + self.ttl_s, value)
+            self._entries.move_to_end(key)
+            while len(self._entries) > self.maxsize:
+                self._entries.popitem(last=False)  # the least recently used
 
     def clear(self) -> None:
-        self._entries.clear()
+        with self._lock:
+            self._entries.clear()
 
     def __len__(self) -> int:
-        return len(self._entries)
+        with self._lock:
+            return len(self._entries)
 
 
 def clear_all_caches() -> None:
     """Empty every cache (used by tests, so no test sees another's results)."""
-    for cache in _ALL_CACHES:
+    with _ALL_CACHES_LOCK:
+        caches = list(_ALL_CACHES)
+    for cache in caches:
         cache.clear()
