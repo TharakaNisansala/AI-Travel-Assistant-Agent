@@ -225,7 +225,8 @@ def run_scenario(
             except Exception as exc:
                 if is_rate_limited(exc) or is_transient_llm_error(exc):
                     raise InfrastructureStop(
-                        f"{scenario.id}, turn {index + 1}: Gemini is unavailable "
+                        f"{scenario.id}, turn {index + 1}: the model "
+                        f"({agent.model_name}) is unavailable or rate-limited "
                         f"({type(exc).__name__}); the scenario was not saved"
                     ) from exc
                 error = ErrorRecord.from_exception(exc, turn=index)
@@ -324,7 +325,10 @@ def run_all(
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the Stage 9 eval scenarios against Gemini and save records."
+        description=(
+            "Run the Stage 9 eval scenarios against the LLM set by LLM_PROVIDER "
+            "and save records."
+        )
     )
     parser.add_argument(
         "--category",
@@ -342,7 +346,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--max-calls",
         type=int,
         default=DEFAULT_MAX_CALLS,
-        help=f"Gemini call budget for this invocation (default {DEFAULT_MAX_CALLS})",
+        help=(
+            f"LLM call budget for this invocation (default {DEFAULT_MAX_CALLS}, "
+            "sized for Gemini's free tier of about 20 a day)"
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -372,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     todo = [s for s in scenarios if not store.has(s.id)]
     print(
         f"Run {store.run_id}: {len(scenarios)} selected, {len(todo)} to run "
-        f"(~{estimate_calls(todo)} Gemini calls), budget {args.max_calls}."
+        f"(~{estimate_calls(todo)} LLM calls), budget {args.max_calls}."
     )
     if args.dry_run:
         for s in todo:
@@ -410,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = run_all(scenarios, agent, store, max_calls=args.max_calls)
     print(
         f"Saved {len(summary.saved)}, already saved {len(summary.skipped)}, "
-        f"left {len(summary.left)}; {summary.calls} Gemini calls."
+        f"left {len(summary.left)}; {summary.calls} LLM calls."
     )
     if summary.stopped:
         print(f"Stopped: {summary.stopped}")

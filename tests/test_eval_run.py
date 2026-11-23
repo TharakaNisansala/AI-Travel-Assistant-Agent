@@ -345,7 +345,9 @@ def test_run_all_stops_at_an_outage_and_saves_nothing_for_it(tmp_path):
     )
     assert summary.saved == []
     assert summary.left == ["itin-ella", "route-a"]
-    assert "Gemini is unavailable" in summary.stopped
+    # Provider-neutral: names the model of this run, not "Gemini".
+    assert "the model (fake) is unavailable or rate-limited" in summary.stopped
+    assert "Gemini" not in summary.stopped
     assert store.scenario_ids() == []
 
 
@@ -356,7 +358,8 @@ def test_dry_run_lists_scenarios_and_calls_nothing(capsys, tmp_path, monkeypatch
     monkeypatch.setattr(runner, "RunStore", lambda run_id: RunStore(run_id, tmp_path))
     assert runner.main(["--dry-run", "--category", "routing"]) == 0
     out = capsys.readouterr().out
-    assert "7 selected, 7 to run (~7 Gemini calls)" in out
+    assert "7 selected, 7 to run (~7 LLM calls)" in out
+    assert "Gemini" not in out
     assert "route-clarify-vague (routing, ~1 calls)" in out
     assert list(tmp_path.iterdir()) == []  # nothing written
 
@@ -370,3 +373,20 @@ def test_a_fault_variable_in_the_shell_is_refused(monkeypatch, capsys):
 def test_a_bad_selection_is_reported(capsys):
     assert runner.main(["--dry-run", "--only", "no-such-id"]) == 1
     assert "no scenario with ids" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("module", ["run", "scorecard"])
+def test_cli_help_is_provider_neutral(module, capsys):
+    from ai_travel_assistant.evals import scorecard
+
+    main = runner.main if module == "run" else scorecard.main
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = " ".join(capsys.readouterr().out.split())  # undo argparse wrapping
+    assert "LLM call" in out
+    if module == "run":
+        assert "LLM_PROVIDER" in out
+        # The default budget names Gemini on purpose: it is sized for its quota.
+        assert "sized for Gemini's free tier" in out
+    else:
+        assert "Gemini" not in out

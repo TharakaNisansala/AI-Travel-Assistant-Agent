@@ -184,6 +184,9 @@ def test_cli_scores_the_latest_run_and_saves_the_markdown(
     out = capsys.readouterr().out
     assert "# Scorecard: run 2026-11-18T0900" in out
     assert "All targets met." in out
+    # Provider-neutral: the Model line names the model; the count says "LLM".
+    assert "**LLM calls in the run:**" in out
+    assert "Gemini" not in out
     saved = (new.dir / SCORECARD_FILE).read_text(encoding="utf-8")
     assert saved.startswith("# Scorecard: run 2026-11-18T0900")
     # The scorecard file is not mistaken for a record.

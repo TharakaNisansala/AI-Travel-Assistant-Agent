@@ -957,7 +957,7 @@ def build_chat_graph(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Ask the tool-calling travel agent (usually 2 Gemini calls)."
+        description="Ask the tool-calling travel agent (usually 2 LLM calls)."
     )
     parser.add_argument(
         "question", nargs="?", help='e.g. "Find places in Sri Lanka for hiking"'
@@ -968,7 +968,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--chat",
         action="store_true",
-        help="multi-turn chat with memory (each message makes Gemini calls)",
+        help="multi-turn chat with memory (each message makes LLM calls)",
     )
     parser.add_argument(
         "--thread", metavar="ID", help="with --chat: continue a saved conversation"
@@ -994,7 +994,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "with --chat: skip request understanding and clarification "
-            "questions (saves one Gemini call per message)"
+            "questions (saves one LLM call per message)"
         ),
     )
     parser.add_argument(

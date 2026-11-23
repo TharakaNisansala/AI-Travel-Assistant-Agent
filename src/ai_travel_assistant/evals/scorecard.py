@@ -218,7 +218,7 @@ def render_markdown(card: Scorecard) -> str:
         f"**Scenarios scored:** {scored}"
         + (f" ({len(card.missing)} still missing)" if card.missing else " (complete)")
         + "  ",
-        f"**Gemini calls in the run:** {card.total_calls}",
+        f"**LLM calls in the run:** {card.total_calls}",
         "",
         "| Metric | Result | Counted | Target | Met |",
         "|---|---|---|---|---|",
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None, root: Path = DEFAULT_RUNS_DIR) -> int:
     parser.add_argument(
         "--judge",
         action="store_true",
-        help="also ask the LLM judge about each plan (one Gemini call per plan)",
+        help="also ask the LLM judge about each plan (one LLM call per plan)",
     )
     parser.add_argument(
         "--no-save",
