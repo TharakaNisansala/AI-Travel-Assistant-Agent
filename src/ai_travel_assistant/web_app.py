@@ -42,7 +42,7 @@ from pathlib import Path
 import streamlit as st
 from langgraph.graph.state import CompiledStateGraph
 
-from ai_travel_assistant import usage_limits, web_ui
+from ai_travel_assistant import public_sessions, usage_limits, web_ui
 from ai_travel_assistant.long_term_memory import sqlite_store
 from ai_travel_assistant.request_understanding import QUICK_REPLIES
 from ai_travel_assistant.sri_lanka_places import PROVINCES, weather_question
@@ -119,23 +119,28 @@ def get_graph(db_path: str, public: bool = False) -> CompiledStateGraph:
     without one it is garbage-collected when this function returns, which
     closes the context-manager generators and with them the connections.
     In public mode the graph's models are a provider pool, built once, so its
-    health table is shared by every visitor.
+    health table is shared by every visitor. Public conversations are kept
+    in memory and there is no store: no saved preferences, so no visitor can
+    read or delete another's (see public_sessions.py).
     """
     settings = load_llm_settings(public)  # ConfigError if nothing is set
+    if public:
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        guard = get_usage_guard()
+        public_sessions.shared_janitor()  # ConfigError for a bad idle time
+        return build_chat_graph(
+            settings,
+            InMemorySaver(),
+            None,  # no long-term memory in public
+            max_history_tokens=guard.limits.max_history_tokens,
+            call_budget=guard.budget,  # counted before every provider call
+        )
     stack = ExitStack()
     atexit.register(stack.close)
     checkpointer = stack.enter_context(sqlite_checkpointer(Path(db_path)))
     store = stack.enter_context(sqlite_store(Path(db_path)))
-    if not public:
-        return build_chat_graph(settings, checkpointer, store)
-    guard = get_usage_guard()
-    return build_chat_graph(
-        settings,
-        checkpointer,
-        store,
-        max_history_tokens=guard.limits.max_history_tokens,
-        call_budget=guard.budget,  # counted before every provider call
-    )
+    return build_chat_graph(settings, checkpointer, store)
 
 
 def get_usage_guard() -> UsageGuard:
@@ -147,8 +152,11 @@ def get_usage_guard() -> UsageGuard:
 
 
 def dev_mode() -> bool:
-    """Developer views on? Off by default, so travellers see only the PDF."""
-    return _env_flag(DEV_ENV)
+    """Developer views on? Off by default, so travellers see only the PDF.
+
+    Never on in public mode, even if TRAVEL_DEV is set by mistake.
+    """
+    return _env_flag(DEV_ENV) and not public_mode()
 
 
 def _thread_config(thread_id: str) -> dict:
@@ -156,8 +164,16 @@ def _thread_config(thread_id: str) -> dict:
 
 
 def switch_thread(thread_id: str) -> None:
-    """Make thread_id the active conversation; the old one stays saved."""
+    """Make thread_id the active conversation; the old one stays saved.
+
+    In public mode the old one is deleted instead: its visitor has left it,
+    and nobody else can reach it.
+    """
     state = st.session_state
+    old = state.get("thread_id")
+    graph = state.get("_graph")
+    if public_mode() and old and old != thread_id and graph is not None:
+        public_sessions.shared_janitor().release(old, graph.checkpointer.delete_thread)
     state.thread_id = thread_id
     state.last_steps = []
     state.picker = None
@@ -171,12 +187,19 @@ def run_command(graph: CompiledStateGraph, user_id: str, text: str) -> bool:
     the next rerun draws once (see show_notice).
     """
     state = st.session_state
+    command = text.strip().lower()
+    if public_mode() and command in (PREFS_COMMAND, FORGET_COMMAND):
+        state.notice = ("info", public_sessions.PREFERENCES_OFF)
+        return True
     result = chat_command(graph, state.thread_id, user_id, text)
     if result is None:
         return False
-    is_itinerary = text.strip().lower() == ITINERARY_COMMAND
+    is_itinerary = command == ITINERARY_COMMAND
     if result.quit:  # the browser chat has nothing to close
-        state.notice = ("info", QUIT_NOTE)
+        note = public_sessions.PUBLIC_QUIT_NOTE if public_mode() else QUIT_NOTE
+        state.notice = ("info", note)
+    elif result.thread_id and public_mode():  # /new, without the thread id
+        state.notice = ("info", public_sessions.NEW_CONVERSATION)
     elif is_itinerary and result.reply != NO_ITINERARY:
         state.notice = ("json", result.reply) if dev_mode() else ("info", JSON_DEV_ONLY)
     else:
@@ -261,19 +284,32 @@ def render_turn(graph: CompiledStateGraph, thread_id: str, text: str, user_id: s
     return steps
 
 
-def sidebar(graph: CompiledStateGraph) -> str:
-    """Conversation controls; returns the traveller's user id."""
+def sidebar(graph: CompiledStateGraph, public: bool = False) -> str:
+    """Conversation controls; returns the traveller's user id.
+
+    Public mode: no Traveller field, thread id, terminal hint or saved
+    preferences. The user id is this browser session's random visitor id.
+    """
     state = st.session_state
     with st.sidebar:
         st.markdown(f"## {web_ui.ASSISTANT_AVATAR} {web_ui.APP_NAME}")
         with st.container(border=True):
             st.markdown("### 💬 Conversation")
-            user_id = st.text_input("Traveller", value=DEFAULT_USER) or DEFAULT_USER
+            if public:
+                user_id = state.visitor_id
+            else:
+                user_id = st.text_input("Traveller", value=DEFAULT_USER) or DEFAULT_USER
             if st.button("✨ New conversation", use_container_width=True):
-                state.thread_id = new_thread_id()
-                state.last_steps = []
-            st.caption(f"Thread `{state.thread_id}`")
-            st.caption("Continue it in the terminal with `--chat --thread <id>`.")
+                if public:
+                    switch_thread(new_thread_id())  # also deletes the old one
+                else:
+                    state.thread_id = new_thread_id()
+                    state.last_steps = []
+            if public:
+                st.caption("Your conversation is private to this browser tab.")
+            else:
+                st.caption(f"Thread `{state.thread_id}`")
+                st.caption("Continue it in the terminal with `--chat --thread <id>`.")
 
         with st.container(border=True):
             st.markdown("### 🗺️ Itinerary")
@@ -288,6 +324,8 @@ def sidebar(graph: CompiledStateGraph) -> str:
                     with st.expander("Last itinerary as JSON (dev)"):
                         st.code(itinerary_json(graph, state.thread_id), language="json")
 
+        if public:
+            return user_id
         with st.container(border=True):
             st.markdown("### ⭐ Saved preferences")
             st.caption(preference_command(graph.store, user_id, PREFS_COMMAND))
@@ -378,11 +416,15 @@ def main() -> None:
         st.error(f"Configuration error: {exc}")
         st.stop()
 
+    public = public_mode()
     state = st.session_state
     state.setdefault("thread_id", new_thread_id())
     state.setdefault("last_steps", [])
     state.setdefault("messages_sent", 0)  # this visit's messages to the agent
-    user_id = sidebar(graph)
+    if public:
+        state["_graph"] = graph  # for switch_thread's cleanup
+        state.setdefault("visitor_id", public_sessions.new_visitor_id())
+    user_id = sidebar(graph, public)
 
     values = graph.get_state(_thread_config(state.thread_id)).values
     history = visible_history(values.get("messages", []))
@@ -417,7 +459,7 @@ def main() -> None:
         picked = None
     else:
         picked = weather_picker() if state.picker else suggestions()
-    guard = get_usage_guard() if public_mode() else None
+    guard = get_usage_guard() if public else None
     max_chars = guard.limits.max_message_chars if guard else None
     if prompt := st.chat_input(PLACEHOLDER, max_chars=max_chars) or picked:
         if run_command(graph, user_id, prompt):
@@ -431,6 +473,9 @@ def main() -> None:
             state.messages_sent += 1
         with st.chat_message("user", avatar=web_ui.USER_AVATAR):
             st.markdown(prompt)
+        janitor = public_sessions.shared_janitor() if public else None
+        if janitor is not None:
+            janitor.touch(state.thread_id)  # in use: not swept mid-turn
         try:
             with guard.request_slot() if guard else nullcontext():
                 state.last_steps = render_turn(graph, state.thread_id, prompt, user_id)
@@ -439,6 +484,10 @@ def main() -> None:
         except Exception as exc:  # keep the page alive after a failed turn
             st.error(f"Request failed: {describe_llm_error(exc)}")
         else:
+            if janitor is not None:
+                janitor.touch(state.thread_id)
+                # Throttled: deletes long-idle public threads (any visitor's).
+                janitor.sweep(graph.checkpointer.delete_thread)
             st.rerun()  # redraw from the saved thread (sidebar included)
 
 

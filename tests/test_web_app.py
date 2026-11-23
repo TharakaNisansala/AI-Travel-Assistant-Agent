@@ -16,6 +16,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from ai_travel_assistant import (  # noqa: E402
     llm_basics,
+    public_sessions,
     tool_calling,
     usage_limits,
     web_app,
@@ -35,6 +36,7 @@ from tests.test_streaming import ANSWERS, streaming  # noqa: E402
 
 APP = str(Path(web_app.__file__))
 built_with: list = []  # the settings each build_chat_graph call received
+built_persistence: list = []  # (checkpointer, store) of each build
 
 
 @pytest.fixture
@@ -43,9 +45,11 @@ def page(monkeypatch, tmp_path):
     import streamlit as st
 
     built_with.clear()
+    built_persistence.clear()
 
     st.cache_resource.clear()
     usage_limits.reset_shared_guard()  # fresh counters for every page
+    public_sessions.reset_shared_janitor()
     settings = llm_basics.GeminiSettings(model="fake-model", api_key="k")
     monkeypatch.setattr(llm_basics, "load_settings", lambda: settings)
     monkeypatch.setenv(web_app.DB_ENV, str(tmp_path / "chat.sqlite"))
@@ -54,6 +58,7 @@ def page(monkeypatch, tmp_path):
     def start(model):
         def fake_build(settings, checkpointer, store, **kwargs):
             built_with.append(settings)
+            built_persistence.append((checkpointer, store))
             return tool_calling.build_tool_agent_graph(
                 model,
                 checkpointer=checkpointer,
@@ -72,6 +77,7 @@ def page(monkeypatch, tmp_path):
     yield start
     st.cache_resource.clear()
     usage_limits.reset_shared_guard()
+    public_sessions.reset_shared_janitor()
 
 
 def texts(app) -> list[str]:
@@ -444,6 +450,7 @@ def public_page(page, monkeypatch):
 
     for variable, _ in LIMIT_VARIABLES.values():
         monkeypatch.delenv(variable, raising=False)
+    monkeypatch.delenv(public_sessions.THREAD_IDLE_ENV, raising=False)
     monkeypatch.setenv(web_app.PUBLIC_ENV, "1")
     monkeypatch.setenv("TRAVEL_MAX_MESSAGES_PER_SESSION", "2")
     monkeypatch.setenv("TRAVEL_MAX_MESSAGE_CHARS", "40")
@@ -550,3 +557,148 @@ def test_a_bad_limit_value_is_reported_as_a_configuration_error(
     app.run()
     assert not app.exception
     assert "TRAVEL_MAX_DAILY_LLM_CALLS" in app.error[0].value
+
+
+# --- Public mode: visitor sessions and privacy (public_sessions.py) ---------------
+
+
+def all_page_text(app) -> str:
+    """Every text a visitor can read, sidebar included."""
+    parts = [m.value for m in app.markdown]
+    parts += [c.value for c in app.caption]
+    parts += [i.value for i in app.info] + [w.value for w in app.warning]
+    parts += [t.label for t in app.text_input] + [b.label for b in app.button]
+    return "\n".join(str(p) for p in parts)
+
+
+def test_public_mode_keeps_conversations_in_memory_without_a_store(public_page):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    public_page(streaming())
+    [(checkpointer, store)] = built_persistence
+    assert isinstance(checkpointer, InMemorySaver)
+    assert store is None  # no saved preferences, no preference extractor
+
+
+def test_local_mode_keeps_sqlite_and_saved_preferences(page):
+    page(streaming())
+    [(checkpointer, store)] = built_persistence
+    assert type(checkpointer).__name__ == "SqliteSaver"
+    assert store is not None
+
+
+def test_public_page_hides_the_traveller_field_thread_id_and_terminal_hint(
+    public_page,
+):
+    app = public_page(streaming("One."))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    text = all_page_text(app)
+    assert app.text_input == []  # no Traveller field
+    assert app.session_state["thread_id"] not in text
+    assert "--thread" not in text and "terminal" not in text.lower()
+    assert "Saved preferences" not in text
+    assert "Forget my preferences" not in text
+    assert "private to this browser tab" in text
+
+
+def test_each_public_visitor_gets_random_ids(public_page):
+    first = public_page(streaming())
+    second = public_page(streaming())
+    ids = [
+        (app.session_state["visitor_id"], app.session_state["thread_id"])
+        for app in (first, second)
+    ]
+    assert ids[0][0] != ids[1][0] and ids[0][1] != ids[1][1]
+    assert all(v.startswith("visitor-") and v != "local" for v, _ in ids)
+
+
+def test_two_public_visitors_never_see_each_others_conversation(public_page):
+    model = streaming("Ella is green.", "Galle has a fort.")
+    alice = public_page(model)
+    bob = public_page(model)  # a second browser session, same server
+    alice.chat_input[0].set_value("What is Ella like?").run()
+    bob.chat_input[0].set_value("What is Ella like?").run()
+    assert "Ella is green." in texts(alice)
+    assert "Galle has a fort." not in texts(alice)
+    assert texts(bob) == ["What is Ella like?", "Galle has a fort."]
+    alice.run()  # a later rerun still shows only her own thread
+    assert "Galle has a fort." not in texts(alice)
+    assert len(built_persistence) == 1  # one server graph serves both visitors
+
+
+@pytest.mark.parametrize("command", ["/prefs", "/forget"])
+def test_preference_commands_are_off_in_public(public_page, command):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    app.chat_input[0].set_value(command).run()
+    assert public_sessions.PREFERENCES_OFF in [i.value for i in app.info]
+    assert model.calls == []
+
+
+def test_new_in_public_hides_the_thread_id_and_deletes_the_old_thread(public_page):
+    app = public_page(streaming("Ella is green."))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    old = app.session_state["thread_id"]
+    graph = app.session_state["_graph"]
+    config = {"configurable": {"thread_id": old}}
+    assert graph.get_state(config).values.get("messages")
+    app.chat_input[0].set_value("/new").run()
+    new = app.session_state["thread_id"]
+    assert new != old
+    assert public_sessions.NEW_CONVERSATION in [i.value for i in app.info]
+    assert new not in all_page_text(app) and old not in all_page_text(app)
+    assert not graph.get_state(config).values.get("messages")  # deleted
+    assert texts(app) == []
+
+
+def test_the_new_conversation_button_deletes_the_old_thread_in_public(public_page):
+    app = public_page(streaming("Ella is green."))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    old = app.session_state["thread_id"]
+    graph = app.session_state["_graph"]
+    app.sidebar.button[0].click().run()  # "New conversation"
+    assert app.session_state["thread_id"] != old
+    config = {"configurable": {"thread_id": old}}
+    assert not graph.get_state(config).values.get("messages")
+
+
+def test_one_visitor_starting_over_does_not_touch_another(public_page):
+    model = streaming("Ella is green.", "Galle has a fort.")
+    alice, bob = public_page(model), public_page(model)
+    alice.chat_input[0].set_value("What is Ella like?").run()
+    bob.chat_input[0].set_value("What is Ella like?").run()
+    alice.chat_input[0].set_value("/new").run()
+    bob.run()
+    assert texts(bob) == ["What is Ella like?", "Galle has a fort."]
+    assert len(built_persistence) == 1
+
+
+def test_public_quit_says_nothing_is_kept(public_page):
+    app = public_page(streaming())
+    app.chat_input[0].set_value("/quit").run()
+    assert public_sessions.PUBLIC_QUIT_NOTE in [i.value for i in app.info]
+
+
+def test_a_public_turn_is_tracked_for_cleanup(public_page):
+    app = public_page(streaming("Ella is green."))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert public_sessions.shared_janitor().tracked() == 1
+
+
+def test_dev_views_are_never_on_in_public(monkeypatch):
+    monkeypatch.setenv(web_app.DEV_ENV, "1")
+    monkeypatch.setenv(web_app.PUBLIC_ENV, "1")
+    assert not web_app.dev_mode()
+    monkeypatch.delenv(web_app.PUBLIC_ENV)
+    assert web_app.dev_mode()
+
+
+def test_a_bad_thread_idle_time_is_a_configuration_error(public_page, monkeypatch):
+    import streamlit as st
+
+    monkeypatch.setenv(public_sessions.THREAD_IDLE_ENV, "soon")
+    st.cache_resource.clear()
+    app = AppTest.from_file(APP, default_timeout=30)
+    app.run()
+    assert not app.exception
+    assert public_sessions.THREAD_IDLE_ENV in app.error[0].value
