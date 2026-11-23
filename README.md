@@ -22,9 +22,11 @@ It is a learning project, built stage by stage (see [docs/PROJECT_PLAN.md](docs/
 | `get_destination_guide` | Wikivoyage (MediaWiki API) |
 | `estimate_travel_time` | OSRM road routing |
 | `convert_currency` | ExchangeRate-API (open access) |
+| `get_attraction_prices` | The Central Cultural Fund's ticket-price page ([ccf.gov.lk](https://ccf.gov.lk/is/)), cached for 24 hours in `.data/prices.sqlite`, plus hand-checked entries in `src/ai_travel_assistant/data/attraction_prices.yaml` (empty for now). A price quoted in one currency gets the other (LKR or USD) from ExchangeRate-API |
+| `suggest_hotels` | Wikivoyage "Sleep" listings (MediaWiki API), with their last-edited year. Suggestions only: no booking or availability |
 | `search_destinations` | A small built-in guide to Sri Lankan destinations |
 
-Only Gemini needs a key.
+None of the data sources needs a key. Only the LLM provider does: Gemini (the default), Groq or Cloudflare Workers AI, chosen with `LLM_PROVIDER` (see [Setup](#setup)).
 
 ## Architecture
 
