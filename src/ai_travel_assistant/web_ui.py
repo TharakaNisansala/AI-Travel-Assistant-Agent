@@ -319,21 +319,27 @@ def apply_theme() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
 
 
-def pdf_download_button(itinerary: Mapping[str, Any], key: str) -> None:
-    """'Download plan (PDF)', or a short note if the PDF cannot be made."""
+def pdf_download_button(
+    itinerary: Mapping[str, Any], key: str, *, sample: bool = False
+) -> None:
+    """'Download plan (PDF)', or a short note if the PDF cannot be made.
+
+    sample=True: the prepared demo plan; the PDF and its file name say so.
+    """
     import streamlit as st
 
     from ai_travel_assistant.itinerary_pdf import itinerary_pdf, pdf_file_name
 
     try:
-        data = itinerary_pdf(itinerary)
+        data = itinerary_pdf(itinerary, sample=sample)
     except Exception:  # a broken PDF must never take the chat page down
         st.caption("The PDF could not be made for this plan.")
         return
+    name = pdf_file_name(itinerary)
     st.download_button(
-        "⬇ Download plan (PDF)",
+        "⬇ Download sample plan (PDF)" if sample else "⬇ Download plan (PDF)",
         data,
-        file_name=pdf_file_name(itinerary),
+        file_name=f"sample-{name}" if sample else name,
         mime="application/pdf",
         key=key,
         type="primary",
@@ -342,11 +348,23 @@ def pdf_download_button(itinerary: Mapping[str, Any], key: str) -> None:
 
 
 def render_itinerary(
-    itinerary: Mapping[str, Any], markdown_text: str, key: str
+    itinerary: Mapping[str, Any],
+    markdown_text: str,
+    key: str,
+    *,
+    sample: bool = False,
 ) -> None:
-    """Draw a checked itinerary as cards, with a PDF download and the plain text."""
+    """Draw a checked itinerary as cards, with a PDF download and the plain text.
+
+    sample=True: the prepared demo plan (sample_trip.py), labelled as such
+    above the cards, on the download button and inside the PDF.
+    """
     import streamlit as st
 
+    if sample:
+        from ai_travel_assistant.sample_trip import SAMPLE_LABEL, SAMPLE_NOTE
+
+        st.warning(f"**{SAMPLE_LABEL}.** {SAMPLE_NOTE}", icon="🧪")
     st.markdown(plan_header_html(itinerary), unsafe_allow_html=True)
 
     days = itinerary.get("day_plans") or []
@@ -394,6 +412,6 @@ def render_itinerary(
             for line in gaps:
                 st.markdown(f"- **Not available:** {line}")
 
-    pdf_download_button(itinerary, key=f"pdf-{key}")
+    pdf_download_button(itinerary, key=f"pdf-{key}", sample=sample)
     with st.expander("Plain-text version"):
         st.markdown(markdown_text)

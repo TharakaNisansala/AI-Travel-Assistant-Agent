@@ -115,18 +115,22 @@ class _Writer:
 # --- Sections -------------------------------------------------------------------------
 
 
-def _title_band(w: _Writer, plan: Mapping[str, Any]) -> None:
+def _title_band(w: _Writer, plan: Mapping[str, Any], label: str | None = None) -> None:
     pdf = w.pdf
     days = plan.get("day_plans") or []
     title = w.clean(f"{len(days)}-day trip to {plan.get('destination', '')}")
     pdf.set_font(FONT, "B", 20)
     title_lines = len(pdf.multi_cell(pdf.epw, 9, title, dry_run=True, output="LINES"))
     band = 21 + 9 * title_lines  # a long destination wraps; the band grows with it
+    if label:
+        band += 7  # one more line for the label
     top = pdf.get_y()
     pdf.set_fill_color(*_rgb(web_ui.OCEAN_DEEP))
     pdf.rect(0, 0, pdf.w, top + band, style="F")
     pdf.set_fill_color(255, 255, 255)  # later fills (the costs table) stay white
     pdf.set_y(top + 4)
+    if label:  # e.g. "Sample — not live AI", above the title
+        w.text(label.upper(), size=10, bold=True, colour=web_ui.GOLD)
     w.text(title, size=20, bold=True, colour="#FFFFFF", height=9)
     start = str(plan.get("start_from", ""))
     if plan.get("start_assumed"):
@@ -240,10 +244,21 @@ def _notes(w: _Writer, plan: Mapping[str, Any]) -> None:
 # --- Public API -----------------------------------------------------------------------
 
 
-def itinerary_pdf(plan: Mapping[str, Any], today: date | None = None) -> bytes:
-    """The whole checked itinerary as a PDF file's bytes."""
+def itinerary_pdf(
+    plan: Mapping[str, Any], today: date | None = None, *, sample: bool = False
+) -> bytes:
+    """The whole checked itinerary as a PDF file's bytes.
+
+    sample=True (the prepared demo plan, sample_trip.py): the title band and
+    the footer say it is a sample, not a live AI plan.
+    """
+    label = note = None
+    if sample:
+        from ai_travel_assistant.sample_trip import SAMPLE_LABEL, SAMPLE_PDF_NOTE
+
+        label, note = SAMPLE_LABEL, SAMPLE_PDF_NOTE
     w = _Writer()
-    _title_band(w, plan)
+    _title_band(w, plan, label)
     for day in plan.get("day_plans") or []:
         _day(w, day)
     if not _budget(w, plan) and plan.get("costs"):
@@ -258,6 +273,8 @@ def itinerary_pdf(plan: Mapping[str, Any], today: date | None = None) -> bytes:
         colour=web_ui.MUTED,
     )
     w.text(DISCLAIMER, size=8.5, colour=web_ui.MUTED)
+    if note:
+        w.text(note, size=8.5, bold=True, colour=web_ui.MUTED)
     return bytes(w.pdf.output())
 
 

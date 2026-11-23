@@ -702,3 +702,130 @@ def test_a_bad_thread_idle_time_is_a_configuration_error(public_page, monkeypatc
     app.run()
     assert not app.exception
     assert public_sessions.THREAD_IDLE_ENV in app.error[0].value
+
+
+# --- Public mode: Sample Demo Mode (sample_trip.py) ---------------------------------
+
+
+def sample_open(app) -> bool:
+    from ai_travel_assistant.sample_trip import SAMPLE_LABEL
+
+    return any(SAMPLE_LABEL in w.value for w in app.warning)
+
+
+def click(app, key):
+    [button] = [b for b in app.button if b.key == key]
+    return button.click().run()
+
+
+def test_a_public_visitor_can_open_the_sample_without_any_ai_call(public_page):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    assert {"sidebar-sample", "empty-sample"} <= {b.key for b in app.button}
+    click(app, "empty-sample")
+    assert not app.exception
+    assert sample_open(app)
+    assert any("Sample Demo Mode" in md.value for md in app.markdown)
+    assert any("2-day trip to Kandy" in md.value for md in app.markdown)
+    labels = [tab.label for tab in app.tabs]
+    assert len(labels) == 2 and labels[0].startswith("Day 1")
+    assert "pdf-sample" in [d.key for d in app.get("download_button")]
+    assert len(app.chat_input) == 0  # no chat box: nothing can reach the AI
+    assert model.calls == []
+    assert web_app.get_usage_guard().budget.used() == 0
+    assert app.session_state["messages_sent"] == 0
+
+
+def test_the_sample_is_never_shown_as_a_chat_answer(public_page):
+    app = public_page(streaming())
+    click(app, "sidebar-sample")
+    assert texts(app) == []  # not in the conversation history
+    graph = app.session_state["_graph"]
+    config = {"configurable": {"thread_id": app.session_state["thread_id"]}}
+    assert not graph.get_state(config).values.get("itinerary")
+
+
+def test_back_to_live_chat_still_works_after_the_sample(public_page):
+    model = streaming("Ella is green.")
+    app = public_page(model)
+    click(app, "sidebar-sample")
+    click(app, "close-sample")
+    assert not sample_open(app)
+    assert len(app.chat_input) == 1
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert "Ella is green." in texts(app)
+
+
+def test_the_sample_is_offered_when_the_daily_budget_is_used_up(public_page):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    budget = web_app.get_usage_guard().budget
+    while budget.try_consume():
+        pass
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert web_app.SAMPLE_OFFER in [i.value for i in app.info]
+    click(app, "offer-sample")
+    assert sample_open(app)
+    assert model.calls == []
+
+
+def test_the_sample_is_offered_after_the_session_limit(public_page):
+    app = public_page(streaming("One.", "Two."))
+    for _ in range(3):
+        app.chat_input[0].set_value("What is Ella like?").run()
+    assert web_app.SAMPLE_OFFER in [i.value for i in app.info]
+
+
+def test_the_sample_is_offered_when_the_ai_fails(public_page):
+    from ai_travel_assistant.provider_pool import AllProvidersUnavailable
+
+    failure = AllProvidersUnavailable([("gemini", "quota"), ("groq", "quota")])
+    app = public_page(streaming(fail_on={0: failure}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert app.error and web_app.SAMPLE_OFFER in [i.value for i in app.info]
+    click(app, "offer-sample")
+    assert sample_open(app)
+
+
+def test_a_too_long_message_does_not_offer_the_sample(public_page):
+    app = public_page(streaming())
+    app.chat_input[0].set_value("x" * 41).run()
+    assert web_app.SAMPLE_OFFER not in [i.value for i in app.info]
+
+
+def test_a_successful_turn_clears_the_offer(public_page):
+    from ai_travel_assistant.provider_pool import AllProvidersUnavailable
+
+    failure = AllProvidersUnavailable([("gemini", "busy")])
+    app = public_page(streaming("Ella is green.", fail_on={0: failure}))
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert app.session_state["offer_sample"]
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert not app.session_state["offer_sample"]
+    assert web_app.SAMPLE_OFFER not in [i.value for i in app.info]
+
+
+def test_with_no_provider_configured_the_sample_still_works(public_page, monkeypatch):
+    import streamlit as st
+
+    from ai_travel_assistant import provider_pool
+
+    def none_configured():
+        raise llm_basics.ConfigError("No AI provider is configured.")
+
+    monkeypatch.setattr(provider_pool, "load_pool_settings", none_configured)
+    st.cache_resource.clear()
+    app = AppTest.from_file(APP, default_timeout=30)
+    app.run()
+    assert web_app.SAMPLE_OFFER in [i.value for i in app.info]
+    click(app, "offer-sample")
+    assert not app.exception
+    assert sample_open(app)
+    assert len(app.chat_input) == 0
+    assert "pdf-sample" in [d.key for d in app.get("download_button")]
+
+
+def test_local_mode_has_no_sample_buttons(page):
+    app = page(streaming())
+    keys = {b.key for b in app.button}
+    assert not keys & {"sidebar-sample", "empty-sample", "offer-sample"}

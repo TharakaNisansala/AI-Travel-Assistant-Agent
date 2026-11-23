@@ -307,6 +307,7 @@ def sidebar(graph: CompiledStateGraph, public: bool = False) -> str:
                     state.last_steps = []
             if public:
                 st.caption("Your conversation is private to this browser tab.")
+                sample_button("🧪 View a sample trip (no AI)", key="sidebar-sample")
             else:
                 st.caption(f"Thread `{state.thread_id}`")
                 st.caption("Continue it in the terminal with `--chat --thread <id>`.")
@@ -332,6 +333,47 @@ def sidebar(graph: CompiledStateGraph, public: bool = False) -> str:
             if st.button("Forget my preferences", use_container_width=True):
                 st.toast(preference_command(graph.store, user_id, FORGET_COMMAND))
     return user_id
+
+
+# --- Sample Demo Mode (public only; sample_trip.py) ---------------------------
+
+SAMPLE_VIEW = "sample"
+CHAT_VIEW = "chat"
+SAMPLE_OFFER = (
+    "Live AI can't answer right now, or a limit was reached. You can still "
+    "explore a prepared sample trip: it needs no AI."
+)
+
+
+def open_sample() -> None:
+    st.session_state.view = SAMPLE_VIEW
+    st.session_state.offer_sample = False
+
+
+def sample_button(label: str, key: str) -> None:
+    """A button that opens the sample (on_click: works on the next rerun)."""
+    st.button(label, key=key, on_click=open_sample, use_container_width=True)
+
+
+def sample_view(can_go_back: bool = True) -> None:
+    """The prepared sample plan, clearly labelled. No chat box: no AI call."""
+    from ai_travel_assistant.sample_trip import sample_itinerary, sample_markdown
+
+    st.markdown("### 🧪 Sample Demo Mode")
+    # A plain box, not a chat bubble: it must not look like an AI answer.
+    with st.container(border=True):
+        web_ui.render_itinerary(
+            sample_itinerary(), sample_markdown(), key="sample", sample=True
+        )
+    if can_go_back and st.button("⬅ Back to the live AI chat", key="close-sample"):
+        st.session_state.view = CHAT_VIEW
+        st.rerun()
+
+
+def sample_offer() -> None:
+    """After a limit or an AI failure: point the visitor to the sample."""
+    st.info(SAMPLE_OFFER, icon="🧪")
+    sample_button("🧪 Explore the sample trip", key="offer-sample")
 
 
 def suggestions() -> str | None:
@@ -408,16 +450,20 @@ def main() -> None:
     from ai_travel_assistant.llm_basics import ConfigError
     from ai_travel_assistant.robustness import describe_llm_error
 
-    try:
-        graph = get_graph(
-            os.environ.get(DB_ENV, str(DEFAULT_CHAT_DB)), public=public_mode()
-        )
-    except ConfigError as exc:
-        st.error(f"Configuration error: {exc}")
-        st.stop()
-
     public = public_mode()
     state = st.session_state
+    state.setdefault("view", CHAT_VIEW)
+    try:
+        graph = get_graph(os.environ.get(DB_ENV, str(DEFAULT_CHAT_DB)), public=public)
+    except ConfigError as exc:
+        st.error(f"Configuration error: {exc}")
+        if public:  # live AI cannot start, but the sample needs none
+            if state.view == SAMPLE_VIEW:
+                sample_view(can_go_back=False)
+            else:
+                sample_offer()
+        st.stop()
+
     state.setdefault("thread_id", new_thread_id())
     state.setdefault("last_steps", [])
     state.setdefault("messages_sent", 0)  # this visit's messages to the agent
@@ -425,6 +471,9 @@ def main() -> None:
         state["_graph"] = graph  # for switch_thread's cleanup
         state.setdefault("visitor_id", public_sessions.new_visitor_id())
     user_id = sidebar(graph, public)
+    if public and state.view == SAMPLE_VIEW:
+        sample_view()
+        return  # no history, no chat box: Sample Demo Mode makes no AI call
 
     values = graph.get_state(_thread_config(state.thread_id)).values
     history = visible_history(values.get("messages", []))
@@ -459,6 +508,10 @@ def main() -> None:
         picked = None
     else:
         picked = weather_picker() if state.picker else suggestions()
+        if public and not state.picker:
+            sample_button("🧪 Or explore a sample trip (no AI needed)", "empty-sample")
+    if public and state.get("offer_sample"):
+        sample_offer()
     guard = get_usage_guard() if public else None
     max_chars = guard.limits.max_message_chars if guard else None
     if prompt := st.chat_input(PLACEHOLDER, max_chars=max_chars) or picked:
@@ -469,6 +522,9 @@ def main() -> None:
             refusal = guard.refusal(prompt, state.messages_sent)
             if refusal:
                 state.notice = ("warning", refusal)
+                # A too-long message just needs shortening; other limits
+                # mean no live AI for now, so point to the sample.
+                state.offer_sample = len(prompt) <= guard.limits.max_message_chars
                 st.rerun()
             state.messages_sent += 1
         with st.chat_message("user", avatar=web_ui.USER_AVATAR):
@@ -481,9 +537,16 @@ def main() -> None:
                 state.last_steps = render_turn(graph, state.thread_id, prompt, user_id)
         except UsageLimitReached as exc:  # its text is written for visitors
             st.warning(str(exc))
+            if public:
+                state.offer_sample = True
+                sample_offer()
         except Exception as exc:  # keep the page alive after a failed turn
             st.error(f"Request failed: {describe_llm_error(exc)}")
+            if public:
+                state.offer_sample = True
+                sample_offer()
         else:
+            state.offer_sample = False
             if janitor is not None:
                 janitor.touch(state.thread_id)
                 # Throttled: deletes long-idle public threads (any visitor's).
