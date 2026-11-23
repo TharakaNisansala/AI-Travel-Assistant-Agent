@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-agent-weather-question",
+  "category": "routing",
+  "started_at": "2026-11-23T06:28:35.385278Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "What's the weather like in Ella tomorrow?",
+      "route": "agent",
+      "intent": "question",
+      "trip_request": null,
+      "missing_fields": [],
+      "question": null,
+      "itinerary": null,
+      "message_count": 1,
+      "llm_calls": 1,
+      "seconds": 1.156
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "What's the weather like in Ella tomorrow?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "a2629ed2-5791-4e27-a52b-ad0e0c8dd70b"
+      }
+    }
+  ],
+  "error": null
+}

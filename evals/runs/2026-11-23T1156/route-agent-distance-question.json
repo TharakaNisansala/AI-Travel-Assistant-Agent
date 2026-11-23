@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-agent-distance-question",
+  "category": "routing",
+  "started_at": "2026-11-23T06:28:48.186305Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "How long does it take to drive from Colombo to Galle?",
+      "route": "agent",
+      "intent": "question",
+      "trip_request": null,
+      "missing_fields": [],
+      "question": null,
+      "itinerary": null,
+      "message_count": 1,
+      "llm_calls": 1,
+      "seconds": 1.297
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "How long does it take to drive from Colombo to Galle?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "b216df2d-bc8b-46eb-a48f-499991765d90"
+      }
+    }
+  ],
+  "error": null
+}

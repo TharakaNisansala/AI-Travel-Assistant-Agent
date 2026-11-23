@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-mirissa-no-days",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:27:29.853332Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan a trip to Mirissa for whale watching.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Mirissa",
+        "days": null,
+        "interests": [
+          "whale watching"
+        ],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": null,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "days",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "How many days would you like to spend in Mirissa?",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 0.733
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan a trip to Mirissa for whale watching.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "d93c2239-59f8-4bb3-b367-ae39c460e8b1"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "How many days would you like to spend in Mirissa?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "9af9c5a4-6f41-40ec-bb59-b1ad2b31c725",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

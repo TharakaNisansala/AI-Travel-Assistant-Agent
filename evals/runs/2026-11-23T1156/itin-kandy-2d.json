@@ -1,0 +1,827 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "itin-kandy-2d",
+  "category": "itinerary",
+  "started_at": "2026-11-23T06:58:24.420010Z",
+  "model": "gemini-3.5-flash",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan 2 days in Kandy just for me; I'm a Sri Lankan citizen starting from Colombo, and I like temples and culture. Please suggest mid-range hotels.",
+      "route": "agent",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Kandy",
+        "days": 2,
+        "interests": [
+          "temples",
+          "culture"
+        ],
+        "budget": "mid-range",
+        "travel_dates": null,
+        "travellers": 1,
+        "children": 0,
+        "pace": null,
+        "nationality": "Sri Lankan",
+        "citizenship": "local",
+        "party": [],
+        "origin": "Colombo",
+        "wants_hotels": true,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [],
+      "question": null,
+      "itinerary": {
+        "destination": "Kandy",
+        "days": 2,
+        "start_from": "Colombo",
+        "start_assumed": false,
+        "summary": "A 2-day cultural and temple exploration in Kandy for 1 traveler starting from Colombo. The itinerary includes visiting the Temple of the Tooth, watching traditional Kandyan dancing, exploring scenic viewpoints, and seeing historic sites.",
+        "day_plans": [
+          {
+            "day": 1,
+            "theme": "Arrival & Sacred Relic Visit",
+            "forecast_date": "2026-11-23",
+            "travel": [
+              {
+                "from_place": "Colombo",
+                "to_place": "Kandy",
+                "road_distance_km": 115.0,
+                "driving_minutes": 132.0
+              }
+            ],
+            "activities": [
+              {
+                "time_of_day": "afternoon",
+                "name": "Temple of the Tooth (Sri Dalada Maligawa)",
+                "description": "Visit Sri Lanka's sacred temple housing the tooth relic of the Lord Buddha in central Kandy.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              },
+              {
+                "time_of_day": "evening",
+                "name": "Kandy Cultural Centre",
+                "description": "Experience a traditional 1-hour Kandyan dancing performance near Kandy Lake.",
+                "estimated_hours": 1.5,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": "2026-11-23: moderate rain showers; min 21.8 °C, max 30.2 °C; chance of precipitation 100%; rainfall 8.2 mm; max wind 12.1 km/h (Open-Meteo)"
+          },
+          {
+            "day": 2,
+            "theme": "Viewpoints & Local Cultural Sights",
+            "forecast_date": "2026-11-24",
+            "travel": [],
+            "activities": [
+              {
+                "time_of_day": "morning",
+                "name": "Viewpoint of Asgiri Maha Vihara Pirivena",
+                "description": "Take in scenic views of Kandy town and monastic pirivena from this vantage point.",
+                "estimated_hours": 1.0,
+                "distance_km": 0.6,
+                "source": "OpenStreetMap"
+              },
+              {
+                "time_of_day": "morning",
+                "name": "Arthur’s Seat",
+                "description": "Enjoy panoramic vistas overlooking Kandy Lake and the surrounding hills.",
+                "estimated_hours": 1.0,
+                "distance_km": 0.7,
+                "source": "OpenStreetMap"
+              },
+              {
+                "time_of_day": "afternoon",
+                "name": "Giragama Walawwa",
+                "description": "Explore the historic ancestral walawwa architectural site near the city center.",
+                "estimated_hours": 1.0,
+                "distance_km": 0.5,
+                "source": "OpenStreetMap"
+              },
+              {
+                "time_of_day": "afternoon",
+                "name": "The Kandy Clock Tower",
+                "description": "",
+                "estimated_hours": 0.5,
+                "distance_km": 0.3,
+                "source": "OpenStreetMap"
+              }
+            ],
+            "weather": "2026-11-24: dense drizzle; min 21.0 °C, max 29.2 °C; chance of precipitation 100%; rainfall 3.7 mm; max wind 9.5 km/h (Open-Meteo)"
+          }
+        ],
+        "costs": [
+          {
+            "item": "Second Class Train Ticket (Colombo to Kandy)",
+            "per": "person",
+            "quantity": 2,
+            "quantity_note": "2 trips (round trip Colombo-Kandy) for 1 person",
+            "quoted_currency": "LKR",
+            "amount_lkr": 500.0,
+            "amount_usd": null
+          }
+        ],
+        "facts": [
+          {
+            "text": "Intercity express trains are hassle-free and scenic, 2½-3 hours, 10 trains per day.",
+            "quote": "Intercity express trains are hassle-free and scenic, 2½-3 hours, 10 trains per day.",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "Train tickets from Colombo to Kandy cost Rs 500 in second class and Rs 240 in third class as of 2023.",
+            "quote": "Tickets from Colombo are Rs 7,000 first class, Rs 500 in second class, Rs 240 in third class (2023).",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "Local tuk-tuks are a convenient way to get around Kandy, costing around Rs 60-70 per km.",
+            "quote": "If you can get them for Rs 60-70 per Km you are doing well",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "Kandyan dancing performance tickets cost between Rs 2,000 and 3,500 per person as of 2024.",
+            "quote": "As of 2024, expect prices to range from 2000 to 3500 per ticket for about 1 hour performances",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "Driving road distance from Colombo to Kandy is 115 km, taking around 2 hours 12 minutes by car without traffic.",
+            "quote": "Road distance: 115 km (straight line 95 km). Driving time: about 2 h 12 min by car without traffic or stops.",
+            "source": "OSRM"
+          }
+        ],
+        "tips": [
+          "Dress in modest attire covering shoulders and knees when visiting temples and sacred sites in Kandy.",
+          "Negotiate tuk-tuk fares before getting in or use ride-hailing apps like PickMe or Uber to avoid overcharging near the railway station.",
+          "Note that hotel recommendations come from Wikivoyage and prices/availability cannot be booked or checked through this tool."
+        ],
+        "assumptions": [
+          "Traveler travels from Colombo to Kandy on Day 1 and stays 1 night in Kandy.",
+          "Accommodation price is based on the guide's listing for McLeod Inn (mid-range)."
+        ],
+        "not_available": [
+          "Room availability and current booking status for hotels (contact hotels directly)",
+          "Food, dining, and meal prices",
+          "Travel times between individual sights inside Kandy city",
+          "Official ticket prices for Sri Lankan citizens at Temple of the Sacred Tooth Relic (Sri Dalada Maligawa) and Royal Botanical Gardens",
+          "Price of McLeod Inn (Mid-range guest house) (not quoted in the Kandy guide)",
+          "USD value of Second Class Train Ticket (Colombo to Kandy) (no conversion retrieved)",
+          "Price of Kandyan Dancing Performance Ticket (Kandy Cultural Centre) (not quoted in the Kandy guide)"
+        ],
+        "warnings": [
+          "The Kandy Clock Tower: details with prices, times or schedules were left out of the description because no tool result confirms them."
+        ],
+        "entrance_fees": [
+          {
+            "query": "Sri Dalada Maligawa",
+            "name": null,
+            "categories": [],
+            "group": [],
+            "sources": [],
+            "conditions": "",
+            "extras": [],
+            "verified_lkr": 0.0,
+            "verified_usd": 0.0
+          }
+        ],
+        "cost_lines": [
+          {
+            "item": "Second Class Train Ticket (Colombo to Kandy)",
+            "per": "person",
+            "quantity": 2,
+            "quantity_note": "2 trips (round trip Colombo-Kandy) for 1 person",
+            "each_lkr": 500.0,
+            "each_usd": null,
+            "group_lkr": 1000.0,
+            "group_usd": null,
+            "per_person_lkr": 1000.0,
+            "per_person_usd": null
+          }
+        ],
+        "stays": {
+          "source_url": "https://en.wikivoyage.org/wiki/Kandy",
+          "wanted": "mid-range places",
+          "items": [
+            {
+              "name": "Hill Top Hotel",
+              "level": "Mid-range",
+              "price_text": "US$53-60(2014)",
+              "listed_year": 2014,
+              "recent": false,
+              "url": "https://www.aitkenspencehotels.com/factsheets/hotelhilltop/factsheets.pdf",
+              "description": "Two star hotel. 73 standard rooms. The onsite restaurant serves a variety of local and international dishes."
+            },
+            {
+              "name": "Golden View Rest",
+              "level": "Mid-range",
+              "price_text": "Room from Rs 1,500",
+              "listed_year": null,
+              "recent": false,
+              "url": "",
+              "description": "View on the lake and a part of the city. Hot water and very clean rooms. Air-con and non air-con rooms. The breakfast is not included in the price if not asked. Beware of the owner's \"free\" tuk-tuk sc"
+            },
+            {
+              "name": "McLeod Inn",
+              "level": "Mid-range",
+              "price_text": "Rs 1,300-1,700",
+              "listed_year": null,
+              "recent": false,
+              "url": "",
+              "description": "The couple who run the place are all smiles and very helpful. Rooms are sparkling clean, comfy beds, en suite with hot and cold water. Some beautiful views across Kandy from their balcony and from a c"
+            },
+            {
+              "name": "Queen's Hotel",
+              "level": "Mid-range",
+              "price_text": "Non-air-con: single US$40-60, double $45-80; Air-con: single $79-94, double $92-122",
+              "listed_year": null,
+              "recent": false,
+              "url": "http://www.queenshotel.lk",
+              "description": "One of the oldest hotels in Kandy. Offers ideal geataway spots to watch the Maligawa Perahera (the procession)."
+            },
+            {
+              "name": "Riverdale Hotel",
+              "level": "Mid-range",
+              "price_text": "From US$42",
+              "listed_year": null,
+              "recent": false,
+              "url": "",
+              "description": ""
+            },
+            {
+              "name": "Heavens Holiday Resort",
+              "level": "Mid-range",
+              "price_text": "Non-air-con: single US$15-20, double $15-20; Air-con: single US$30-40, double $30-40",
+              "listed_year": null,
+              "recent": false,
+              "url": "http://www.heavensholidayresort.com",
+              "description": "Heavens Holiday Resort is a nice clean guest house near the Kandy city. They have 3 rooms and 3 bathrooms. One room has a private balcony and others with public balcony. Home made foods are offered th"
+            }
+          ],
+          "unpriced": [],
+          "note": ""
+        },
+        "budget": {
+          "group": "1 Sri Lankan adult",
+          "travellers": 1,
+          "entrance_verified_lkr": 0.0,
+          "entrance_verified_usd": 0.0,
+          "entrance_estimated_lkr": 0.0,
+          "entrance_estimated_usd": 0.0,
+          "other_estimated_lkr": 1000.0,
+          "other_estimated_usd": null,
+          "accommodation_lkr": null,
+          "accommodation_usd": null,
+          "accommodation_note": "",
+          "total_lkr": 1000.0,
+          "total_usd": null,
+          "per_person_lkr": 1000.0,
+          "per_person_usd": null,
+          "not_verified": [],
+          "requires_confirmation": [
+            "Sri Dalada Maligawa"
+          ],
+          "not_included": [
+            "Accommodation (no price listed in the last 3 years for the suggested places)",
+            "Food and drinks",
+            "Transport fares (buses, trains, tuk-tuks, a driver)",
+            "Guides, tips and personal spending"
+          ],
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given."
+        }
+      },
+      "message_count": 11,
+      "llm_calls": 3,
+      "seconds": 104.141
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan 2 days in Kandy just for me; I'm a Sri Lankan citizen starting from Colombo, and I like temples and culture. Please suggest mid-range hotels.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "24042f17-80c5-461e-b0d4-a6e65fa2b5da"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "get_attraction_prices",
+            "arguments": "{\"attractions\": [\"Temple of the Sacred Tooth Relic\", \"Sri Dalada Maligawa\", \"Royal Botanical Gardens\"]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_12934794173889762011": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20732-fc57-72d5-8ffe-4dfe140e0279-0",
+        "tool_calls": [
+          {
+            "name": "get_destination_guide",
+            "args": {
+              "topic": "all",
+              "destination": "Kandy"
+            },
+            "id": "call_12934794173889762011",
+            "type": "tool_call"
+          },
+          {
+            "name": "find_attractions",
+            "args": {
+              "category": "all",
+              "destination": "Kandy"
+            },
+            "id": "call_12934794173889763434",
+            "type": "tool_call"
+          },
+          {
+            "name": "get_weather_forecast",
+            "args": {
+              "destination": "Kandy"
+            },
+            "id": "call_12934794173889764857",
+            "type": "tool_call"
+          },
+          {
+            "name": "estimate_travel_time",
+            "args": {
+              "origin": "Colombo",
+              "destination": "Kandy"
+            },
+            "id": "call_12934794173889762184",
+            "type": "tool_call"
+          },
+          {
+            "name": "suggest_hotels",
+            "args": {
+              "destination": "Kandy"
+            },
+            "id": "call_12934794173889763607",
+            "type": "tool_call"
+          },
+          {
+            "name": "get_attraction_prices",
+            "args": {
+              "attractions": [
+                "Temple of the Sacred Tooth Relic",
+                "Sri Dalada Maligawa",
+                "Royal Botanical Gardens"
+              ]
+            },
+            "id": "call_12934794173889765030",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 4755,
+          "output_tokens": 780,
+          "total_tokens": 5535,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 629
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Wikivoyage guide for Kandy (all topics):\n[Introduction] Kandy is in the centre of Sri Lanka 125 km away from Colombo and is generally recognised as the island nation's cultural capital. It is on the UNESCO World Heritage List.\n[Understand] This is the last kingdom of the country. Since it was conquered by the British around 1815 you can still see the living traditions. Kandyans are usually proud of their heritage. Since the western elements has played a comparatively little role in the city most Kandyans uphold Buddhist values. Since it is in the cultural triangle the authorities try to retain this values as much as possible. ...\n[Get in] By train: From Colombo - Intercity express trains are hassle-free and scenic, 2½-3 hours, 10 trains per day. There is a great observation saloon (first class) on one of these trains, but this often books out. Other trains are usually crowded and depart late. Tickets from Colombo are Rs 7,000 first class, Rs 500 in second class, Rs 240 in third class (2023). ...\n[Get around] The local \"Three-Wheelers\" ('Tuk-Tuk) are an amazingly cheap (if you know how to haggle! If you can get them for Rs 60-70 per Km you are doing well) and exciting way of seeing the city, and they run virtually all night long. However, beware of the Tuk-Tuk mafia at the Kandy railway station – they are likely to rip you off (and they threaten Uber or PickMe drivers when they collect passengers near their stand). ...\n[See] 1 Temple of the Tooth (Sri Dalada Maligawa), ☏ +94 812234226, fax: +94 8112236201, maligawa@sltnet.lk. Dawn to dusk. It houses a tooth relic of the Lord Buddha, and is consequently considered one of Sri Lanka's most holy shrines. Although you should expect that you will not be able to view the actual tooth itself, the casket within which it is said to be is displayed twice a day. ...\n[Do] Kandyan dancing — traditional form of dancing, which can be seen at multiple venues including that the \"Kandy Cultural Centre\" near the Kandy lake. As of 2024, expect prices to range from 2000 to 3500 per ticket for about 1 hour performances, not including intermission time. 1 Buddhist Publication Society, 54 Sangharaja Mawatha (near the lake), ☏ +94 81 2 237283. Mon-Sat 9AM–4:30PM. ...\n[Sleep] There are many hostels, budget, midrange and splurge hotels in Kandy, where you can stay the night and rest easily. Budget: There are lots of cheapish guest houses to the south and east of the lake, all only a short walk from the town centre, and generally clean and friendly. Burmese Rest. The cheapest option in the city. The Buddhist monks are friendly and the building is a quiet retreat from Kandy's noisy streets. ...\n[Cope] 1 Kandy Tourist Police. (updated Nov 2016) Hospitals: Major hospitals and health care centres: General Hospital Kandy, ☏ +94 81 2222261. Teaching Hospital - Peradeniya, ☏ +94 81 2388001. Sirimavo Bandaranaike Specialised Children's Hospital - Peradeniya. Suwasewana Hospital, 532, Peradeniya Rd, ☏ +94 81 2222404, fax: +94 81 4476763. ...\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Kandy\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_destination_guide",
+        "id": "ef9754a1-9937-4497-a536-869b8eff34cd",
+        "tool_call_id": "call_12934794173889762011",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Attractions near Kandy (Central Province, Sri Lanka); category: all; within 5 km; nearest first:\n- Bogambara (yes), 0.2 km\n- The Kandy Clock Tower (attraction), 0.3 km\n- World War I Memorial (memorial), 0.3 km\n- Giragama Walawwa (attraction), 0.5 km\n- Viewpoint of Asgiri Maha Vihara Pirivena (viewpoint), 0.6 km\n- The Muladeni Panadapa (archaeological site), 0.7 km\n- Arthur’s Seat (viewpoint), 0.7 km\n- Ehelepola Walawwa (archaeological site), 0.7 km\nShowing the 8 nearest of 36 found.\nDistances are straight-line, not travel distance.\nSource: OpenStreetMap via the Overpass API (© OpenStreetMap contributors).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "find_attractions",
+        "id": "a849886e-a12e-4eb4-bc1e-5116f9406090",
+        "tool_call_id": "call_12934794173889763434",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Weather forecast for Kandy (Central Province, Sri Lanka), at lat 7.29, lon 80.63, elevation 500 m.\nTimes are local (Asia/Colombo).\nCurrent conditions (2026-11-23 12:15): 29.0 °C, light drizzle, wind 7.5 km/h, precipitation 0.1 mm.\nDaily forecast (3 days):\n- 2026-11-23 (Mon): moderate rain showers; min 21.8 °C, max 30.2 °C; chance of precipitation 100%; rainfall 8.2 mm; max wind 12.1 km/h.\n- 2026-11-24 (Tue): dense drizzle; min 21.0 °C, max 29.2 °C; chance of precipitation 100%; rainfall 3.7 mm; max wind 9.5 km/h.\n- 2026-11-25 (Wed): violent rain showers; min 20.9 °C, max 28.8 °C; chance of precipitation 100%; rainfall 25.4 mm; max wind 7.5 km/h.\nSource: Open-Meteo live forecast API (open-meteo.com).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_weather_forecast",
+        "id": "35ad99f8-6331-486a-b413-6d420c7f402e",
+        "tool_call_id": "call_12934794173889764857",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Road trip from Colombo (Colombo District, Western Province, Sri Lanka) to Kandy (Central Province, Sri Lanka):\n- Road distance: 115 km (straight line 95 km).\n- Driving time: about 2 h 12 min by car without traffic or stops.\nThis is a free-flow car estimate: real journeys, especially on hill roads or by bus, tuk-tuk or train, usually take longer. Say so.\nSource: OSRM routing on OpenStreetMap roads (© OpenStreetMap contributors).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "estimate_travel_time",
+        "id": "b08b02e5-6e27-4983-b932-f9e4e59ed9d1",
+        "tool_call_id": "call_12934794173889762184",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Places to stay in Kandy (mid-range places), from https://en.wikivoyage.org/wiki/Kandy:\n- Hill Top Hotel (Mid-range): US$53-60(2014) (listed 2014, may have changed), https://www.aitkenspencehotels.com/factsheets/hotelhilltop/factsheets.pdf\n- Golden View Rest (Mid-range): Room from Rs 1,500 (date of listing unknown)\n- McLeod Inn (Mid-range): Rs 1,300-1,700 (date of listing unknown)\n- Queen's Hotel (Mid-range): Non-air-con: single US$40-60, double $45-80; Air-con: single $79-94, double $92-122 (date of listing unknown), http://www.queenshotel.lk\n- Riverdale Hotel (Mid-range): From US$42 (date of listing unknown)\n- Heavens Holiday Resort (Mid-range): Non-air-con: single US$15-20, double $15-20; Air-con: single US$30-40, double $30-40 (date of listing unknown), http://www.heavensholidayresort.com\nThese come from Wikivoyage (community-written) and prices may be out of date. This app cannot book rooms or check availability: tell the traveller to contact the hotel. Name only these places; never add others.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "suggest_hotels",
+        "id": "87c031e9-3890-462d-b4ec-1c669c78312a",
+        "tool_call_id": "call_12934794173889763607",
+        "artifact": {
+          "destination": "Kandy",
+          "title": "Kandy",
+          "article_url": "https://en.wikivoyage.org/wiki/Kandy",
+          "level": "mid-range",
+          "max_lkr": null,
+          "lkr_per_usd": 332.392719,
+          "checked_on": "2026-11-23",
+          "note": "",
+          "listings": [
+            {
+              "name": "Hill Top Hotel",
+              "tier": "mid-range",
+              "price_text": "US$53-60(2014)",
+              "url": "https://www.aitkenspencehotels.com/factsheets/hotelhilltop/factsheets.pdf",
+              "address": "200/21, Bahirawakande Peradeniya Rd",
+              "description": "Two star hotel. 73 standard rooms. The onsite restaurant serves a variety of local and international dishes.",
+              "listed_year": 2014,
+              "currency": "USD",
+              "low": 53.0,
+              "high": 60.0,
+              "basis": "room"
+            },
+            {
+              "name": "Golden View Rest",
+              "tier": "mid-range",
+              "price_text": "Room from Rs 1,500",
+              "url": "",
+              "address": "Saranankara Rd",
+              "description": "View on the lake and a part of the city. Hot water and very clean rooms. Air-con and non air-con rooms. The breakfast is not included in the price if not asked. Beware of the owner's \"free\" tuk-tuk sc",
+              "listed_year": null,
+              "currency": "LKR",
+              "low": 1500.0,
+              "high": 1500.0,
+              "basis": "room"
+            },
+            {
+              "name": "McLeod Inn",
+              "tier": "mid-range",
+              "price_text": "Rs 1,300-1,700",
+              "url": "",
+              "address": "65A Rajapihilla Mawatha",
+              "description": "The couple who run the place are all smiles and very helpful. Rooms are sparkling clean, comfy beds, en suite with hot and cold water. Some beautiful views across Kandy from their balcony and from a c",
+              "listed_year": null,
+              "currency": "LKR",
+              "low": 1300.0,
+              "high": 1700.0,
+              "basis": "room"
+            },
+            {
+              "name": "Queen's Hotel",
+              "tier": "mid-range",
+              "price_text": "Non-air-con: single US$40-60, double $45-80; Air-con: single $79-94, double $92-122",
+              "url": "http://www.queenshotel.lk",
+              "address": "124 Srimath Kuda Ratwatte Mawatha",
+              "description": "One of the oldest hotels in Kandy. Offers ideal geataway spots to watch the Maligawa Perahera (the procession).",
+              "listed_year": null,
+              "currency": "USD",
+              "low": 40.0,
+              "high": 60.0,
+              "basis": "room"
+            },
+            {
+              "name": "Riverdale Hotel",
+              "tier": "mid-range",
+              "price_text": "From US$42",
+              "url": "",
+              "address": "32, Aniwatte Road",
+              "description": "",
+              "listed_year": null,
+              "currency": "USD",
+              "low": 42.0,
+              "high": 42.0,
+              "basis": "room"
+            },
+            {
+              "name": "Heavens Holiday Resort",
+              "tier": "mid-range",
+              "price_text": "Non-air-con: single US$15-20, double $15-20; Air-con: single US$30-40, double $30-40",
+              "url": "http://www.heavensholidayresort.com",
+              "address": "23/a arangala nattharanpotha kandy",
+              "description": "Heavens Holiday Resort is a nice clean guest house near the Kandy city. They have 3 rooms and 3 bathrooms. One room has a private balcony and others with public balcony. Home made foods are offered th",
+              "listed_year": null,
+              "currency": "USD",
+              "low": 15.0,
+              "high": 20.0,
+              "basis": "room"
+            }
+          ],
+          "unpriced": []
+        },
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Ticket prices by visitor category (from official sources only):\n\nTemple of the Sacred Tooth Relic: no price found in any official source. Requires confirmation; do not state a price for it.\n\nSri Dalada Maligawa: no price found in any official source. Requires confirmation; do not state a price for it.\n\nRoyal Botanical Gardens: no price found in any official source. Requires confirmation; do not state a price for it.\n\nGroup: 1 Sri Lankan adult.\nVerified entrance fees for the group: LKR 0 (USD 0)\nRequires confirmation: Temple of the Sacred Tooth Relic, Sri Dalada Maligawa, Royal Botanical Gardens\nOther-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\nUse these figures exactly. Never fill in a 'Not verified' price, never use one category's price for another, and label every estimate as an estimate. In an itinerary, entrance fees are added from these results automatically: do not put them in costs.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_attraction_prices",
+        "id": "272196bf-c3f0-494b-8b9e-2e4d0676340c",
+        "tool_call_id": "call_12934794173889765030",
+        "artifact": {
+          "checked_on": "2026-11-23",
+          "lkr_per_usd": 332.392719,
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.",
+          "problems": [],
+          "attractions": [
+            {
+              "query": "Temple of the Sacred Tooth Relic",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Sri Dalada Maligawa",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Royal Botanical Gardens",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            }
+          ]
+        },
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "submit_itinerary",
+            "arguments": "{\"days\": 2, \"destination\": \"Kandy\", \"summary\": \"A 2-day cultural and temple exploration in Kandy for 1 traveler starting from Colombo. The itinerary includes visiting the Temple of the Tooth, watching traditional Kandyan dancing, exploring scenic viewpoints, and seeing historic sites.\", \"tips\": [\"Dress in modest attire covering shoulders and knees when visiting temples and sacred sites in Kandy.\", \"Negotiate tuk-tuk fares before getting in or use ride-hailing apps like PickMe or Uber to avoid overcharging near the railway station.\", \"Note that hotel recommendations come from Wikivoyage and prices/availability cannot be booked or checked through this tool.\"], \"assumptions\": [\"Traveler travels from Colombo to Kandy on Day 1 and stays 1 night in Kandy.\", \"Accommodation price is based on the guide's listing for McLeod Inn (mid-range).\"], \"start_assumed\": false, \"day_plans\": [{\"travel\": [{\"to_place\": \"Kandy\", \"driving_minutes\": 132, \"road_distance_km\": 115, \"from_place\": \"Colombo\"}], \"day\": 1, \"theme\": \"Arrival & Sacred Relic Visit\", \"activities\": [{\"time_of_day\": \"afternoon\", \"source\": \"Wikivoyage\", \"estimated_hours\": 2, \"distance_km\": null, \"name\": \"Temple of the Tooth (Sri Dalada Maligawa)\", \"description\": \"Visit Sri Lanka's sacred temple housing the tooth relic of the Lord Buddha in central Kandy.\"}, {\"source\": \"Wikivoyage\", \"description\": \"Experience a traditional 1-hour Kandyan dancing performance near Kandy Lake.\", \"time_of_day\": \"evening\", \"distance_km\": null, \"name\": \"Kandy Cultural Centre\", \"estimated_hours\": 1.5}], \"forecast_date\": \"2026-11-23\"}, {\"travel\": [], \"forecast_date\": \"2026-11-24\", \"day\": 2, \"theme\": \"Viewpoints & Local Cultural Sights\", \"activities\": [{\"name\": \"Viewpoint of Asgiri Maha Vihara Pirivena\", \"estimated_hours\": 1, \"description\": \"Take in scenic views of Kandy town and monastic pirivena from this vantage point.\", \"source\": \"OpenStreetMap\", \"time_of_day\": \"morning\", \"distance_km\": 0.6}, {\"name\": \"Arthur\\u2019s Seat\", \"description\": \"Enjoy panoramic vistas overlooking Kandy Lake and the surrounding hills.\", \"estimated_hours\": 1, \"distance_km\": 0.7, \"source\": \"OpenStreetMap\", \"time_of_day\": \"morning\"}, {\"description\": \"Explore the historic ancestral walawwa architectural site near the city center.\", \"estimated_hours\": 1, \"time_of_day\": \"afternoon\", \"name\": \"Giragama Walawwa\", \"distance_km\": 0.5, \"source\": \"OpenStreetMap\"}, {\"name\": \"The Kandy Clock Tower\", \"description\": \"Pass by the landmark Kandy Clock Tower in the town center before departing.\", \"estimated_hours\": 0.5, \"source\": \"OpenStreetMap\", \"time_of_day\": \"afternoon\", \"distance_km\": 0.3}]}], \"facts\": [{\"text\": \"Intercity express trains run frequently from Colombo to Kandy, taking about 2.5 to 3 hours.\", \"quote\": \"Intercity express trains are hassle-free and scenic, 2\\u00bd-3 hours, 10 trains per day.\", \"source\": \"Wikivoyage\"}, {\"quote\": \"Tickets from Colombo are Rs 7,000 first class, Rs 500 in second class, Rs 240 in third class (2023).\", \"source\": \"Wikivoyage\", \"text\": \"Train tickets from Colombo to Kandy cost Rs 500 in second class and Rs 240 in third class as of 2023.\"}, {\"text\": \"Local tuk-tuks are a convenient way to get around Kandy, costing around Rs 60-70 per km.\", \"source\": \"Wikivoyage\", \"quote\": \"If you can get them for Rs 60-70 per Km you are doing well\"}, {\"quote\": \"As of 2024, expect prices to range from 2000 to 3500 per ticket for about 1 hour performances\", \"text\": \"Kandyan dancing performance tickets cost between Rs 2,000 and 3,500 per person as of 2024.\", \"source\": \"Wikivoyage\"}, {\"source\": \"OSRM\", \"text\": \"Driving road distance from Colombo to Kandy is 115 km, taking around 2 hours 12 minutes by car without traffic.\", \"quote\": \"Road distance: 115 km (straight line 95 km). Driving time: about 2 h 12 min by car without traffic or stops.\"}], \"costs\": [{\"amount_lkr\": 1700, \"quoted_currency\": \"LKR\", \"per\": \"group\", \"item\": \"McLeod Inn (Mid-range guest house)\", \"quantity_note\": \"1 room for 1 night for 1 traveler\", \"quantity\": 1, \"amount_usd\": null}, {\"amount_usd\": null, \"item\": \"Second Class Train Ticket (Colombo to Kandy)\", \"quantity\": 2, \"per\": \"person\", \"quantity_note\": \"2 trips (round trip Colombo-Kandy) for 1 person\", \"amount_lkr\": 500, \"quoted_currency\": \"LKR\"}, {\"amount_usd\": null, \"quantity_note\": \"1 performance ticket for 1 person\", \"per\": \"person\", \"quoted_currency\": \"LKR\", \"quantity\": 1, \"item\": \"Kandyan Dancing Performance Ticket (Kandy Cultural Centre)\", \"amount_lkr\": 2000}], \"not_available\": [\"Room availability and current booking status for hotels (contact hotels directly)\", \"Food, dining, and meal prices\", \"Travel times between individual sights inside Kandy city\", \"Official ticket prices for Sri Lankan citizens at Temple of the Sacred Tooth Relic (Sri Dalada Maligawa) and Royal Botanical Gardens\"], \"start_from\": \"Colombo\"}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_16846553010111663916": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20733-e47a-7159-90db-430b5972bd2f-0",
+        "tool_calls": [
+          {
+            "name": "submit_itinerary",
+            "args": {
+              "days": 2,
+              "destination": "Kandy",
+              "summary": "A 2-day cultural and temple exploration in Kandy for 1 traveler starting from Colombo. The itinerary includes visiting the Temple of the Tooth, watching traditional Kandyan dancing, exploring scenic viewpoints, and seeing historic sites.",
+              "tips": [
+                "Dress in modest attire covering shoulders and knees when visiting temples and sacred sites in Kandy.",
+                "Negotiate tuk-tuk fares before getting in or use ride-hailing apps like PickMe or Uber to avoid overcharging near the railway station.",
+                "Note that hotel recommendations come from Wikivoyage and prices/availability cannot be booked or checked through this tool."
+              ],
+              "assumptions": [
+                "Traveler travels from Colombo to Kandy on Day 1 and stays 1 night in Kandy.",
+                "Accommodation price is based on the guide's listing for McLeod Inn (mid-range)."
+              ],
+              "start_assumed": false,
+              "day_plans": [
+                {
+                  "travel": [
+                    {
+                      "to_place": "Kandy",
+                      "driving_minutes": 132,
+                      "road_distance_km": 115,
+                      "from_place": "Colombo"
+                    }
+                  ],
+                  "day": 1,
+                  "theme": "Arrival & Sacred Relic Visit",
+                  "activities": [
+                    {
+                      "time_of_day": "afternoon",
+                      "source": "Wikivoyage",
+                      "estimated_hours": 2,
+                      "distance_km": null,
+                      "name": "Temple of the Tooth (Sri Dalada Maligawa)",
+                      "description": "Visit Sri Lanka's sacred temple housing the tooth relic of the Lord Buddha in central Kandy."
+                    },
+                    {
+                      "source": "Wikivoyage",
+                      "description": "Experience a traditional 1-hour Kandyan dancing performance near Kandy Lake.",
+                      "time_of_day": "evening",
+                      "distance_km": null,
+                      "name": "Kandy Cultural Centre",
+                      "estimated_hours": 1.5
+                    }
+                  ],
+                  "forecast_date": "2026-11-23"
+                },
+                {
+                  "travel": [],
+                  "forecast_date": "2026-11-24",
+                  "day": 2,
+                  "theme": "Viewpoints & Local Cultural Sights",
+                  "activities": [
+                    {
+                      "name": "Viewpoint of Asgiri Maha Vihara Pirivena",
+                      "estimated_hours": 1,
+                      "description": "Take in scenic views of Kandy town and monastic pirivena from this vantage point.",
+                      "source": "OpenStreetMap",
+                      "time_of_day": "morning",
+                      "distance_km": 0.6
+                    },
+                    {
+                      "name": "Arthur’s Seat",
+                      "description": "Enjoy panoramic vistas overlooking Kandy Lake and the surrounding hills.",
+                      "estimated_hours": 1,
+                      "distance_km": 0.7,
+                      "source": "OpenStreetMap",
+                      "time_of_day": "morning"
+                    },
+                    {
+                      "description": "Explore the historic ancestral walawwa architectural site near the city center.",
+                      "estimated_hours": 1,
+                      "time_of_day": "afternoon",
+                      "name": "Giragama Walawwa",
+                      "distance_km": 0.5,
+                      "source": "OpenStreetMap"
+                    },
+                    {
+                      "name": "The Kandy Clock Tower",
+                      "description": "Pass by the landmark Kandy Clock Tower in the town center before departing.",
+                      "estimated_hours": 0.5,
+                      "source": "OpenStreetMap",
+                      "time_of_day": "afternoon",
+                      "distance_km": 0.3
+                    }
+                  ]
+                }
+              ],
+              "facts": [
+                {
+                  "text": "Intercity express trains run frequently from Colombo to Kandy, taking about 2.5 to 3 hours.",
+                  "quote": "Intercity express trains are hassle-free and scenic, 2½-3 hours, 10 trains per day.",
+                  "source": "Wikivoyage"
+                },
+                {
+                  "quote": "Tickets from Colombo are Rs 7,000 first class, Rs 500 in second class, Rs 240 in third class (2023).",
+                  "source": "Wikivoyage",
+                  "text": "Train tickets from Colombo to Kandy cost Rs 500 in second class and Rs 240 in third class as of 2023."
+                },
+                {
+                  "text": "Local tuk-tuks are a convenient way to get around Kandy, costing around Rs 60-70 per km.",
+                  "source": "Wikivoyage",
+                  "quote": "If you can get them for Rs 60-70 per Km you are doing well"
+                },
+                {
+                  "quote": "As of 2024, expect prices to range from 2000 to 3500 per ticket for about 1 hour performances",
+                  "text": "Kandyan dancing performance tickets cost between Rs 2,000 and 3,500 per person as of 2024.",
+                  "source": "Wikivoyage"
+                },
+                {
+                  "source": "OSRM",
+                  "text": "Driving road distance from Colombo to Kandy is 115 km, taking around 2 hours 12 minutes by car without traffic.",
+                  "quote": "Road distance: 115 km (straight line 95 km). Driving time: about 2 h 12 min by car without traffic or stops."
+                }
+              ],
+              "costs": [
+                {
+                  "amount_lkr": 1700,
+                  "quoted_currency": "LKR",
+                  "per": "group",
+                  "item": "McLeod Inn (Mid-range guest house)",
+                  "quantity_note": "1 room for 1 night for 1 traveler",
+                  "quantity": 1,
+                  "amount_usd": null
+                },
+                {
+                  "amount_usd": null,
+                  "item": "Second Class Train Ticket (Colombo to Kandy)",
+                  "quantity": 2,
+                  "per": "person",
+                  "quantity_note": "2 trips (round trip Colombo-Kandy) for 1 person",
+                  "amount_lkr": 500,
+                  "quoted_currency": "LKR"
+                },
+                {
+                  "amount_usd": null,
+                  "quantity_note": "1 performance ticket for 1 person",
+                  "per": "person",
+                  "quoted_currency": "LKR",
+                  "quantity": 1,
+                  "item": "Kandyan Dancing Performance Ticket (Kandy Cultural Centre)",
+                  "amount_lkr": 2000
+                }
+              ],
+              "not_available": [
+                "Room availability and current booking status for hotels (contact hotels directly)",
+                "Food, dining, and meal prices",
+                "Travel times between individual sights inside Kandy city",
+                "Official ticket prices for Sri Lankan citizens at Temple of the Sacred Tooth Relic (Sri Dalada Maligawa) and Royal Botanical Gardens"
+              ],
+              "start_from": "Colombo"
+            },
+            "id": "call_16846553010111663916",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 7713,
+          "output_tokens": 6416,
+          "total_tokens": 14129,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 5025
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Itinerary checked and shown to the traveller. Do not repeat it.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "submit_itinerary",
+        "id": "6b0190a5-1ea9-46c7-97a1-966ce5fa41d0",
+        "tool_call_id": "call_16846553010111663916",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "# 2-day trip to Kandy\n\nA 2-day cultural and temple exploration in Kandy for 1 traveler starting from Colombo. The itinerary includes visiting the Temple of the Tooth, watching traditional Kandyan dancing, exploring scenic viewpoints, and seeing historic sites.\n\n**Starting point:** Colombo\n\n## Day 1: Arrival & Sacred Relic Visit\n*Weather:* 2026-11-23: moderate rain showers; min 21.8 °C, max 30.2 °C; chance of precipitation 100%; rainfall 8.2 mm; max wind 12.1 km/h (Open-Meteo)\n*Travel:* Colombo to Kandy: 115 km, about 2 h 12 min by car without traffic (OSRM)\n- **Afternoon: Temple of the Tooth (Sri Dalada Maligawa)** (about 2 h) - Visit Sri Lanka's sacred temple housing the tooth relic of the Lord Buddha in central Kandy. _(Wikivoyage)_\n- **Evening: Kandy Cultural Centre** (about 1.5 h) - Experience a traditional 1-hour Kandyan dancing performance near Kandy Lake. _(Wikivoyage)_\n\n## Day 2: Viewpoints & Local Cultural Sights\n*Weather:* 2026-11-24: dense drizzle; min 21.0 °C, max 29.2 °C; chance of precipitation 100%; rainfall 3.7 mm; max wind 9.5 km/h (Open-Meteo)\n- **Morning: Viewpoint of Asgiri Maha Vihara Pirivena** (about 1 h; 0.6 km straight-line) - Take in scenic views of Kandy town and monastic pirivena from this vantage point. _(OpenStreetMap)_\n- **Morning: Arthur’s Seat** (about 1 h; 0.7 km straight-line) - Enjoy panoramic vistas overlooking Kandy Lake and the surrounding hills. _(OpenStreetMap)_\n- **Afternoon: Giragama Walawwa** (about 1 h; 0.5 km straight-line) - Explore the historic ancestral walawwa architectural site near the city center. _(OpenStreetMap)_\n- **Afternoon: The Kandy Clock Tower** (about 0.5 h; 0.3 km straight-line) _(OpenStreetMap)_\n\n## Entrance fees (official sources)\n- Sri Dalada Maligawa: no official price found. Requires confirmation before you go.\n\n## Other costs (estimates from Wikivoyage, may be out of date)\n- **Second Class Train Ticket (Colombo to Kandy)**\n  - Price: LKR 500 (per person) x 2\n  - Quantity: 2 trips (round trip Colombo-Kandy) for 1 person\n  - Per person: LKR 1,000\n  - For the group: LKR 1,000\n\n## Where to stay (mid-range places)\n- **Hill Top Hotel (Mid-range)**\n  - Price: US$53-60(2014) (listed 2014, may have changed)\n  - Two star hotel. 73 standard rooms. The onsite restaurant serves a variety of local and international dishes.\n  - Website: https://www.aitkenspencehotels.com/factsheets/hotelhilltop/factsheets.pdf\n- **Golden View Rest (Mid-range)**\n  - Price: Room from Rs 1,500 (date of listing unknown)\n  - View on the lake and a part of the city. Hot water and very clean rooms. Air-con and non air-con rooms. The breakfast is not included in the price if not asked. Beware of the owner's \"free\" tuk-tuk sc\n- **McLeod Inn (Mid-range)**\n  - Price: Rs 1,300-1,700 (date of listing unknown)\n  - The couple who run the place are all smiles and very helpful. Rooms are sparkling clean, comfy beds, en suite with hot and cold water. Some beautiful views across Kandy from their balcony and from a c\n- **Queen's Hotel (Mid-range)**\n  - Price: Non-air-con: single US$40-60, double $45-80; Air-con: single $79-94, double $92-122 (date of listing unknown)\n  - One of the oldest hotels in Kandy. Offers ideal geataway spots to watch the Maligawa Perahera (the procession).\n  - Website: http://www.queenshotel.lk\n- **Riverdale Hotel (Mid-range)**\n  - Price: From US$42 (date of listing unknown)\n- **Heavens Holiday Resort (Mid-range)**\n  - Price: Non-air-con: single US$15-20, double $15-20; Air-con: single US$30-40, double $30-40 (date of listing unknown)\n  - Heavens Holiday Resort is a nice clean guest house near the Kandy city. They have 3 rooms and 3 bathrooms. One room has a private balcony and others with public balcony. Home made foods are offered th\n  - Website: http://www.heavensholidayresort.com\n- From Wikivoyage: not booked and availability not checked; contact the hotel. https://en.wikivoyage.org/wiki/Kandy\n\n## Trip budget\n- Group: 1 Sri Lankan adult\n- Verified entrance fees: LKR 0 (USD 0)\n- Other estimated costs: LKR 1,000\n- TOTAL estimated budget for the group: LKR 1,000\n- Per person: LKR 1,000\n- **Requires confirmation**\n  - Sri Dalada Maligawa\n- **Not included (no reliable source here)**\n  - Accommodation (no price listed in the last 3 years for the suggested places)\n  - Food and drinks\n  - Transport fares (buses, trains, tuk-tuks, a driver)\n  - Guides, tips and personal spending\n- Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\n\n## Practical information\n- Intercity express trains are hassle-free and scenic, 2½-3 hours, 10 trains per day. _(Wikivoyage)_\n- Train tickets from Colombo to Kandy cost Rs 500 in second class and Rs 240 in third class as of 2023. _(Wikivoyage)_\n- Local tuk-tuks are a convenient way to get around Kandy, costing around Rs 60-70 per km. _(Wikivoyage)_\n- Kandyan dancing performance tickets cost between Rs 2,000 and 3,500 per person as of 2024. _(Wikivoyage)_\n- Driving road distance from Colombo to Kandy is 115 km, taking around 2 hours 12 minutes by car without traffic. _(OSRM)_\n\n## Suggestions\n_General advice, not checked against live data._\n- Dress in modest attire covering shoulders and knees when visiting temples and sacred sites in Kandy.\n- Negotiate tuk-tuk fares before getting in or use ride-hailing apps like PickMe or Uber to avoid overcharging near the railway station.\n- Note that hotel recommendations come from Wikivoyage and prices/availability cannot be booked or checked through this tool.\n\n## Assumptions\n- Traveler travels from Colombo to Kandy on Day 1 and stays 1 night in Kandy.\n- Accommodation price is based on the guide's listing for McLeod Inn (mid-range).\n\n## Please note\n- The Kandy Clock Tower: details with prices, times or schedules were left out of the description because no tool result confirms them.\n\n## Not available\n- Room availability and current booking status for hotels (contact hotels directly)\n- Food, dining, and meal prices\n- Travel times between individual sights inside Kandy city\n- Official ticket prices for Sri Lankan citizens at Temple of the Sacred Tooth Relic (Sri Dalada Maligawa) and Royal Botanical Gardens\n- Price of McLeod Inn (Mid-range guest house) (not quoted in the Kandy guide)\n- USD value of Second Class Train Ticket (Colombo to Kandy) (no conversion retrieved)\n- Price of Kandyan Dancing Performance Ticket (Kandy Cultural Centre) (not quoted in the Kandy guide)\n\n_Sources: Wikivoyage, OSRM, Open-Meteo, OpenStreetMap._",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "itinerary",
+        "id": "94a1593b-b710-460e-9c81-690cf6d37d6f",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

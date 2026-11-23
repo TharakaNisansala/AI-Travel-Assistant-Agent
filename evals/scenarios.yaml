@@ -5,7 +5,11 @@
 #     two ways, change the message, not the label.
 #   - `expect` holds properties to check, never an expected answer text.
 #   - trip: a null value means "the traveller did not say this; it must stay empty".
-#   - The 15 first-step tool-selection cases live in tests/test_tool_selection.py.
+#   - The 19 first-step tool-selection cases live in tests/test_tool_selection.py.
+#   - A plan request must state everything the agent asks for before planning
+#     (destination, days, group size, citizenship, children for a group, start
+#     place, whether they want hotels); otherwise it is a clarify scenario.
+#     Ticket prices depend on citizenship, so name it, never just "tourists".
 #
 # Cost per run (Gemini calls, approx.): understanding and routing 1 each,
 # itinerary and fault 4-5, multi_turn 8-10.
@@ -22,9 +26,9 @@ scenarios:
 
   - id: und-kandy-cheap-four
     category: understanding
-    turns: ["A cheap 2-day trip to Kandy for the four of us."]
+    turns: ["A cheap 2-day trip to Kandy for the four of us; we're all Sri Lankan citizens."]
     expect:
-      trip: {destination: Kandy, days: 2, travellers: 4, budget: budget}
+      trip: {destination: Kandy, days: 2, travellers: 4, budget: budget, citizenship: local}
 
   - id: und-galle-luxury-march
     category: understanding
@@ -34,9 +38,10 @@ scenarios:
 
   - id: und-sigiriya-solo-packed
     category: understanding
-    turns: ["I'm travelling alone: 4 days around Sigiriya, and pack in as much as possible."]
+    notes: German citizen, so non-SAARC; living anywhere does not change that.
+    turns: ["I'm a German citizen travelling alone: 4 days around Sigiriya, and pack in as much as possible."]
     expect:
-      trip: {destination: Sigiriya, days: 4, travellers: 1, pace: packed}
+      trip: {destination: Sigiriya, days: 4, travellers: 1, pace: packed, citizenship: non_saarc}
 
   - id: und-nuwara-eliya-midrange
     category: understanding
@@ -77,12 +82,13 @@ scenarios:
 
   - id: route-clarify-no-days
     category: routing
+    notes: No days and no group, so the agent must ask first.
     turns: ["Make an itinerary for Anuradhapura."]
     expect: {route: clarify}
 
   - id: route-agent-full-plan
     category: routing
-    turns: ["Plan 2 days in Jaffna, focused on food."]
+    turns: ["Plan 2 days in Jaffna, focused on food, just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel."]
     expect: {route: agent}
 
   - id: route-agent-weather-question
@@ -110,7 +116,7 @@ scenarios:
   - id: itin-ella-3d
     category: itinerary
     notes: The v1 deliverable request (PROJECT_PLAN section 8, item 1).
-    turns: ["Plan a 3-day trip to Ella; I like nature, hiking and scenic places."]
+    turns: ["Plan a 3-day trip to Ella for two British adults starting from Colombo; we like nature, hiking and scenic places. We already have a hotel."]
     expect:
       days: 3
       destination: Ella
@@ -123,38 +129,47 @@ scenarios:
 
   - id: itin-kandy-2d
     category: itinerary
-    turns: ["Plan 2 days in Kandy; I like temples and culture."]
-    expect: {days: 2, destination: Kandy, required_tools: *plan_tools}
+    notes: Asks for hotels, so the plan must also call suggest_hotels.
+    turns: ["Plan 2 days in Kandy just for me; I'm a Sri Lankan citizen starting from Colombo, and I like temples and culture. Please suggest mid-range hotels."]
+    expect:
+      days: 2
+      destination: Kandy
+      required_tools:
+        - get_destination_guide
+        - find_attractions
+        - get_weather_forecast
+        - estimate_travel_time
+        - suggest_hotels
 
   - id: itin-galle-from-kandy
     category: itinerary
     notes: The start is Kandy, not the default Colombo.
-    turns: ["Plan 2 days in Galle, starting from Kandy."]
+    turns: ["Plan 2 days in Galle for two Indian adults, starting from Kandy. We already have a hotel."]
     expect: {days: 2, destination: Galle, required_tools: *plan_tools}
 
   - id: itin-nuwara-eliya-3d
     category: itinerary
-    turns: ["Plan 3 days in Nuwara Eliya; I want to see tea estates."]
+    turns: ["Plan 3 days in Nuwara Eliya for a Sri Lankan family of 2 adults and 1 child, starting from Colombo; we want to see tea estates. We already have a hotel."]
     expect: {days: 3, destination: Nuwara Eliya, required_tools: *plan_tools}
 
   - id: itin-sigiriya-2d
     category: itinerary
-    turns: ["Plan 2 days in Sigiriya; I want to climb the rock."]
+    turns: ["Plan 2 days in Sigiriya for 2 Sri Lankan adults and 1 German adult, starting from Colombo; we want to climb the rock. We already have a hotel."]
     expect: {days: 2, destination: Sigiriya, required_tools: *plan_tools}
 
   - id: itin-mirissa-beach
     category: itinerary
-    turns: ["Plan a relaxed 3-day beach trip to Mirissa."]
+    turns: ["Plan a relaxed 3-day beach trip to Mirissa just for me, starting from Galle; I'm an Australian citizen. We already have a hotel."]
     expect: {days: 3, destination: Mirissa, required_tools: *plan_tools}
 
   - id: itin-anuradhapura-history
     category: itinerary
-    turns: ["Plan 2 days in Anuradhapura for ancient history."]
+    turns: ["Plan 2 days in Anuradhapura for ancient history, for two French adults starting from Colombo. We already have a hotel."]
     expect: {days: 2, destination: Anuradhapura, required_tools: *plan_tools}
 
   - id: itin-trincomalee-budget
     category: itinerary
-    turns: ["Plan a cheap 2-day trip to Trincomalee."]
+    turns: ["Plan a cheap 2-day trip to Trincomalee just for me; I'm a Sri Lankan citizen starting in Kandy. We already have a hotel."]
     expect: {days: 2, destination: Trincomalee, required_tools: *plan_tools}
 
   # --- D. Fault injection (4) -------------------------------------------------
@@ -164,41 +179,41 @@ scenarios:
     category: fault
     notes: Also the deferred Stage 7 live check.
     faults: weather
-    turns: ["Plan 2 days in Ella."]
+    turns: ["Plan 2 days in Ella just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel."]
     expect: {days: 2, destination: Ella, required_tools: *plan_tools}
 
   - id: fault-attractions-kandy
     category: fault
     faults: attractions
-    turns: ["Plan a 2-day trip to Kandy."]
+    turns: ["Plan a 2-day trip to Kandy for two Japanese adults starting from Colombo. We already have a hotel."]
     expect: {days: 2, destination: Kandy, required_tools: *plan_tools}
 
   - id: fault-travel-galle
     category: fault
     faults: travel
-    turns: ["Plan 2 days in Galle."]
+    turns: ["Plan 2 days in Galle just for me; I'm a Maldivian citizen starting from Colombo. We already have a hotel."]
     expect: {days: 2, destination: Galle, required_tools: *plan_tools}
 
   - id: fault-guide-busy-nuwara-eliya
     category: fault
     faults: "guide:busy"
-    turns: ["Plan 2 days in Nuwara Eliya."]
+    turns: ["Plan 2 days in Nuwara Eliya just for me; I'm a Sri Lankan citizen starting from Kandy. We already have a hotel."]
     expect: {days: 2, destination: Nuwara Eliya, required_tools: *plan_tools}
 
   # --- E. Multi-turn (3) ------------------------------------------------------
   - id: multi-ella-easier-day
     category: multi_turn
     notes: Also the deferred Stage 8 live check (a follow-up edit replaces the plan).
-    turns: ["Plan 3 days in Ella.", "Make day 2 easier."]
+    turns: ["Plan 3 days in Ella just for me, starting from Colombo; I'm a Canadian citizen. We already have a hotel.", "Make day 2 easier."]
     expect: {routes: [agent, agent], days: 3, destination: Ella, plan_replaced: true}
 
   - id: multi-clarify-then-plan
     category: multi_turn
     notes: The Stage 6 deliverable (PROJECT_PLAN section 8, item 2).
-    turns: ["Plan me a trip.", "Galle, 2 days."]
+    turns: ["Plan me a trip.", "Galle, 2 days, just me; I'm a Sri Lankan citizen starting from Colombo; no hotel needed."]
     expect: {routes: [clarify, agent], days: 2, destination: Galle}
 
   - id: multi-kandy-longer
     category: multi_turn
-    turns: ["Plan 2 days in Kandy.", "Make it 3 days."]
+    turns: ["Plan 2 days in Kandy just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel.", "Make it 3 days."]
     expect: {routes: [agent, agent], days: 3, destination: Kandy, plan_replaced: true}

@@ -41,9 +41,12 @@ from ai_travel_assistant.context_window import current_turn_start
 # Server-side statuses that usually clear up within seconds.
 TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
 RATE_LIMIT_STATUS = 429
+TOO_LARGE_STATUS = 413
+_RATE_LIMIT_CODE = re.compile(r"rate_limit_exceeded")
 
 _LEADING_STATUS = re.compile(r"^\s*(\d{3})\b")
-# How Google names the per-day quota in a 429 (e.g. GenerateRequestsPerDay...).
+# How the per-day quota is named in a 429: Google says GenerateRequestsPerDay...,
+# Groq says "requests per day (RPD)" or "tokens per day (TPD)".
 _DAILY_QUOTA = re.compile(r"per\s*day|perday", re.IGNORECASE)
 
 
@@ -51,8 +54,9 @@ def error_status(exc: BaseException) -> int | None:
     """The HTTP status behind an error, if it has one.
 
     Gemini errors (google.genai APIError and LangChain's subclasses) carry it
-    as .code; other clients use .status_code. As a last resort, a message that
-    starts with a status ("503 UNAVAILABLE ...") counts too.
+    as .code; other clients (Groq, OpenAI-style SDKs) use .status_code. As a
+    last resort, a message that starts with a status ("503 UNAVAILABLE ...")
+    counts too.
     """
     for attribute in ("code", "status_code"):
         value = getattr(exc, attribute, None)
@@ -63,13 +67,24 @@ def error_status(exc: BaseException) -> int | None:
 
 
 def is_rate_limited(exc: BaseException) -> bool:
-    """True for a 429: too many requests per minute, or the daily quota."""
-    return error_status(exc) == RATE_LIMIT_STATUS
+    """True for a 429: too many requests per minute, or the daily quota.
+
+    Also Groq's 413 with code rate_limit_exceeded: ONE request bigger than the
+    tokens-per-minute limit (seen live: 8,952 tokens against 8,000). It is the
+    provider's limit, not the agent's fault, and retrying cannot fix it.
+    """
+    status = error_status(exc)
+    if status == TOO_LARGE_STATUS:
+        return bool(_RATE_LIMIT_CODE.search(str(exc)))
+    return status == RATE_LIMIT_STATUS
 
 
 def is_quota_exhausted(exc: BaseException) -> bool:
     """True for a 429 caused by the DAILY quota (no point trying again today)."""
     return is_rate_limited(exc) and bool(_DAILY_QUOTA.search(str(exc)))
+
+
+_SDK_CONNECTION_ERRORS = frozenset({"APIConnectionError", "APITimeoutError"})
 
 
 def is_transient_llm_error(exc: BaseException) -> bool:
@@ -82,10 +97,15 @@ def is_transient_llm_error(exc: BaseException) -> bool:
         return True
     if isinstance(exc, (TimeoutError, ConnectionError)):
         return True
+    # The Groq SDK (like OpenAI's) wraps timeouts and dropped connections in
+    # its own APIConnectionError/APITimeoutError, which carry no status code.
+    # Matched by name so this module never has to import the Groq SDK.
+    if any(cls.__name__ in _SDK_CONNECTION_ERRORS for cls in type(exc).__mro__):
+        return True
     return error_status(exc) in TRANSIENT_STATUSES
 
 
-# --- The one retry layer for Gemini --------------------------------------------
+# --- The one retry layer for the LLM --------------------------------------------
 
 # 2 attempts = the first call plus one retry, as approved for Stage 7.
 LLM_MAX_ATTEMPTS = 2
@@ -110,16 +130,21 @@ def llm_retry_policy(initial_interval: float = LLM_RETRY_WAIT_S) -> RetryPolicy:
 
 # --- Messages for the traveller ------------------------------------------------
 
+# Provider-neutral: the same messages serve Gemini and Groq (LLM_PROVIDER).
 QUOTA_MESSAGE = (
-    "Gemini's daily free quota is used up. It resets at midnight US Pacific "
-    "time (about 13:30 in Sri Lanka); please try again then."
+    "The model's daily free quota is used up. Try again later (Gemini's resets "
+    "at about 13:30 Sri Lanka time; Groq's frees up gradually over the day), "
+    "or switch LLM_PROVIDER in .env."
 )
 RATE_LIMIT_MESSAGE = (
-    "Gemini's rate limit was reached. Please wait a minute and try again."
+    "The model's rate limit was reached. Please wait a minute and try again."
 )
-BUSY_MESSAGE = "Gemini is busy or did not answer in time. Please try again in a minute."
+BUSY_MESSAGE = (
+    "The model is busy or did not answer in time. Please try again in a minute."
+)
 REJECTED_MESSAGE = (
-    "Gemini rejected the request. Check GEMINI_API_KEY and GEMINI_MODEL in .env."
+    "The model rejected the request. Check LLM_PROVIDER and that provider's "
+    "API key and model ID in .env."
 )
 
 

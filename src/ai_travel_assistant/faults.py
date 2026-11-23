@@ -25,7 +25,7 @@ import os
 import httpx
 
 ENV_VAR = "FAULT_INJECT"
-SERVICES = ("weather", "attractions", "guide", "travel", "currency")
+SERVICES = ("weather", "attractions", "guide", "travel", "currency", "pricing")
 MODES = ("down", "busy", "timeout")
 DEFAULT_MODE = "down"
 

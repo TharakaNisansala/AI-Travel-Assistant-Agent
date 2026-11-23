@@ -49,7 +49,13 @@ ARTICLE_CACHE = TTLCache("wikivoyage articles", ttl_s=24 * 3600)
 # standard section names (https://en.wikivoyage.org/wiki/Wikivoyage:Where_you_can_stick_it).
 
 Topic = Literal[
-    "all", "overview", "getting_there", "getting_around", "see_and_do", "safety"
+    "all",
+    "overview",
+    "getting_there",
+    "getting_around",
+    "see_and_do",
+    "accommodation",
+    "safety",
 ]
 TOPICS: tuple[str, ...] = get_args(Topic)
 
@@ -59,6 +65,7 @@ TOPIC_SECTIONS: dict[str, tuple[str, ...]] = {
     "getting_there": ("Get in",),
     "getting_around": ("Get around",),
     "see_and_do": ("See", "Do"),
+    "accommodation": ("Sleep",),  # guesthouses and hotels, often with prices
     "safety": ("Stay safe", "Stay healthy", "Cope"),
 }
 # "all" is every single topic above, in this order.
@@ -68,7 +75,7 @@ TOPIC_SECTIONS["all"] = tuple(
 )
 
 # Characters kept per section. One topic gets room for detail; "all" covers up
-# to 10 sections, so each gets less. Roughly 4 characters make one token.
+# to 11 sections, so each gets less. Roughly 4 characters make one token.
 SECTION_CHARS_ONE_TOPIC = 1200
 SECTION_CHARS_ALL = 450
 # The most disambiguation choices we pass back to the LLM.

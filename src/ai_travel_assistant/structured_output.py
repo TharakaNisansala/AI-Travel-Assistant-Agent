@@ -45,8 +45,30 @@ Rules:
 - Use null for any field the traveller did not mention.
 - Convert spoken durations to days: "a weekend" = 2, "a week" = 7,
   "a fortnight" = 14, "N nights" = N + 1.
-- "my family of four" means 4 travellers; "we two" or "my partner and I" means 2.
+- "my family of four" means 4 travellers; "we two" or "my partner and I" means 2;
+  "just me" or "alone" means 1. travellers counts children too: "2 adults and
+  a child" is travellers 3 and children 1. Set children only when stated.
 - For an approximate amount ("around 3 days", "maybe 4"), use that number.
+- origin is where the trip starts ("from Colombo", "starting in Kandy"). If
+  they start at the international airport ("we land at the airport"), use
+  "Katunayake". The destination is never the origin.
+- Ticket prices depend on CITIZENSHIP, never on where someone lives: "a
+  German living in Colombo" is German. Never guess a citizenship from the
+  language, a name or the word "tourist".
+- nationality is the citizenship a whole group shares, in the traveller's
+  words: "we are Sri Lankan" is "Sri Lankan", "just me, I'm a Maldivian
+  citizen" is "Maldivian". Never turn it into a category yourself.
+- citizenship is only "mixed", for a group with different citizenships
+  that are not listed one by one; otherwise null.
+- party lists the travellers when the message names citizenships with counts
+  or ages: "2 Sri Lankan adults, an Indian friend and a German child" is
+  [{Sri Lankan, adult, 2}, {Indian, adult, 1}, {German, child, 1}]. For a
+  dual citizen write nationality "dual". Leave party empty otherwise.
+
+- wants_hotels: true for "find us a hotel" or "where should we stay";
+  false for "we already booked" or "no hotels". room_budget and its currency
+  only for a nightly amount ("up to 10,000 rupees a night" is 10000 LKR); a
+  level such as "cheap" or "luxury" goes in budget instead.
 
 Follow-up replies:
 - The message may start with the question the assistant just asked and the trip
@@ -54,8 +76,13 @@ Follow-up replies:
   the latest reply only; the question and known details are there to help you
   understand it.
 - Read a short reply as the answer to that question. After "How many days...?",
-  "3", "maybe 4", "five" or "a week" give days. After "Where...?", a place name
-  like "Kandy" gives the destination.
+  "3", "maybe 4", "five" or "a week" give days. After "Where ... would you like
+  to go?", a place name like "Kandy" gives the destination. After "Where will
+  you start ...?", a place name gives the origin, not the destination. After
+  "How many people are travelling...?", a number gives travellers. After "How
+  many ... are children?", a number gives children. After a question about
+  citizenship, fill citizenship or party. After "What's your budget for a
+  room per night?", an amount gives room_budget, a word gives budget.
 - A number means days only if the question asked for the trip length or the
   traveller says it is a duration. "We are 3" is travellers, not days. If the
   reply does not answer the question, leave the asked-for fields null.

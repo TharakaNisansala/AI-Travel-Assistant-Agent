@@ -1,4 +1,4 @@
-"""Stage 9, step 4: the eval runner (the harness), live with Gemini.
+"""Stage 9, step 4: the eval runner (the harness), live with the configured LLM.
 
 What this file demonstrates:
   1. An evaluation HARNESS. For each scenario it builds the same graph as
@@ -12,13 +12,14 @@ What this file demonstrates:
      chat-model call in the graph, the understander's included. It counts the
      calls and paces them for the free tier (5 a minute); the pacing sleeps
      are left out of the timings.
-  4. Infrastructure versus agent failures. A Gemini 429 or 5xx says nothing
-     about the agent, so it STOPS the run and the scenario is not saved (run
+  4. Infrastructure versus agent failures. A 429 or 5xx from the LLM provider
+     (or Groq's 413 over its per-minute token limit) says nothing about the
+     agent, so it STOPS the run and the scenario is not saved (run
      it again later with the same --run-id). Any other exception is the
      agent's crash: it is saved, and crash_free scores it.
   5. Cheap scenarios stay cheap. Understanding and routing stop right before
      the agent's first call: the route and the extracted trip are known by
-     then, so each costs one Gemini call instead of five.
+     then, so each costs one LLM call instead of five.
 
 Run from the project root (default budget: 18 calls, under the 20/day quota):
     uv run python -m ai_travel_assistant.evals.run --dry-run
@@ -90,7 +91,7 @@ FREE_TIER_INTERVAL_S = 13.0  # 5 requests a minute, with a margin
 
 
 class InfrastructureStop(RuntimeError):
-    """Gemini refused or failed (429, 5xx): stop the run, save nothing."""
+    """The LLM provider refused or failed (429, 413, 5xx): stop, save nothing."""
 
 
 # --- Counting and pacing calls --------------------------------------------------
@@ -183,7 +184,7 @@ def run_scenario(
 ) -> RunRecord:
     """Run every turn of one scenario and return its record (not saved).
 
-    Raises InfrastructureStop on a Gemini 429/5xx; any other error ends the
+    Raises InfrastructureStop on an LLM 429/413/5xx; any other error ends the
     scenario and is kept in the record.
     """
     clear_all_caches()
@@ -225,7 +226,8 @@ def run_scenario(
             except Exception as exc:
                 if is_rate_limited(exc) or is_transient_llm_error(exc):
                     raise InfrastructureStop(
-                        f"{scenario.id}, turn {index + 1}: Gemini is unavailable "
+                        f"{scenario.id}, turn {index + 1}: the model "
+                        f"({agent.model_name}) is unavailable or rate-limited "
                         f"({type(exc).__name__}); the scenario was not saved"
                     ) from exc
                 error = ErrorRecord.from_exception(exc, turn=index)
@@ -324,7 +326,10 @@ def run_all(
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the Stage 9 eval scenarios against Gemini and save records."
+        description=(
+            "Run the Stage 9 eval scenarios against the LLM set by LLM_PROVIDER "
+            "and save records."
+        )
     )
     parser.add_argument(
         "--category",
@@ -342,7 +347,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--max-calls",
         type=int,
         default=DEFAULT_MAX_CALLS,
-        help=f"Gemini call budget for this invocation (default {DEFAULT_MAX_CALLS})",
+        help=(
+            f"LLM call budget for this invocation (default {DEFAULT_MAX_CALLS}, "
+            "sized for Gemini's free tier of about 20 a day)"
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -372,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     todo = [s for s in scenarios if not store.has(s.id)]
     print(
         f"Run {store.run_id}: {len(scenarios)} selected, {len(todo)} to run "
-        f"(~{estimate_calls(todo)} Gemini calls), budget {args.max_calls}."
+        f"(~{estimate_calls(todo)} LLM calls), budget {args.max_calls}."
     )
     if args.dry_run:
         for s in todo:
@@ -380,7 +388,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # Imported here so the offline tests never load the Gemini setup code.
-    from ai_travel_assistant.llm_basics import ConfigError, build_llm, load_settings
+    from ai_travel_assistant.llm_basics import (
+        ConfigError,
+        agent_client_retries,
+        build_llm,
+        load_settings,
+    )
     from ai_travel_assistant.request_understanding import (
         make_llm_request_understander,
     )
@@ -392,10 +405,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 1
     # The same models and retry layer as --chat (see tool_calling.main).
+    retries = agent_client_retries(settings)
     agent = Agent(
-        model=build_llm(settings, temperature=1.0, max_retries=0),
+        model=build_llm(settings, temperature=1.0, max_retries=retries),
         understander=make_llm_request_understander(
-            build_llm(settings, temperature=0, max_retries=0)
+            build_llm(settings, temperature=0, max_retries=retries)
         ),
         model_name=settings.model,
         llm_retry=llm_retry_policy(),
@@ -404,7 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = run_all(scenarios, agent, store, max_calls=args.max_calls)
     print(
         f"Saved {len(summary.saved)}, already saved {len(summary.skipped)}, "
-        f"left {len(summary.left)}; {summary.calls} Gemini calls."
+        f"left {len(summary.left)}; {summary.calls} LLM calls."
     )
     if summary.stopped:
         print(f"Stopped: {summary.stopped}")

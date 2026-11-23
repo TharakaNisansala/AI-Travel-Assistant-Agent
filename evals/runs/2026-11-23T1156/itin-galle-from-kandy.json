@@ -1,0 +1,69 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "itin-galle-from-kandy",
+  "category": "itinerary",
+  "started_at": "2026-11-23T07:00:14.366892Z",
+  "model": "gemini-3.5-flash",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan 2 days in Galle for two Indian adults, starting from Kandy. We already have a hotel.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Galle",
+        "days": 2,
+        "interests": [],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": 2,
+        "children": null,
+        "pace": null,
+        "nationality": "Indian",
+        "citizenship": "saarc",
+        "party": [],
+        "origin": "Kandy",
+        "wants_hotels": false,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "children"
+      ],
+      "question": "How many of the 2 travellers are children? Child ticket rules differ from site to site.",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 11.172
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan 2 days in Galle for two Indian adults, starting from Kandy. We already have a hotel.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "8be8cb86-9848-42f4-a69a-6a6353807dcd"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "How many of the 2 travellers are children? Child ticket rules differ from site to site.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "9ee6829f-ce33-4a64-981d-c1d2b4ee6a15",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

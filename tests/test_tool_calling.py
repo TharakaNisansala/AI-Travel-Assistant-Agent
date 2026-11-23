@@ -191,6 +191,8 @@ def test_build_binds_every_tool_in_order():
         "get_destination_guide",
         "estimate_travel_time",
         "convert_currency",
+        "get_attraction_prices",
+        "suggest_hotels",
     ]
 
 
@@ -681,3 +683,15 @@ def test_live_g2_agent_combines_attractions_and_weather_for_kandy():
     answer = final_answer(messages)
     assert mentions_any(answer, names), f"answer names no tool result:\n{answer}"
     assert re.search(r"\d\s*°\s*C|degrees", answer, re.I), answer
+
+
+def test_cli_help_is_provider_neutral(capsys):
+    from ai_travel_assistant import tool_calling
+
+    with pytest.raises(SystemExit):
+        tool_calling.main(["--help"])
+    out = " ".join(capsys.readouterr().out.split())  # undo argparse wrapping
+    assert "usually 2 LLM calls" in out
+    assert "each message makes LLM calls" in out
+    assert "saves one LLM call per message" in out
+    assert "Gemini" not in out

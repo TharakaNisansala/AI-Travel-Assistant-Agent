@@ -1,0 +1,642 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "itin-trincomalee-budget",
+  "category": "itinerary",
+  "started_at": "2026-11-23T08:39:07.845497Z",
+  "model": "gemini-3.5-flash",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan a cheap 2-day trip to Trincomalee just for me; I'm a Sri Lankan citizen starting in Kandy. We already have a hotel.",
+      "route": "agent",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Trincomalee",
+        "days": 2,
+        "interests": [],
+        "budget": "budget",
+        "travel_dates": null,
+        "travellers": 1,
+        "children": 0,
+        "pace": null,
+        "nationality": "Sri Lankan",
+        "citizenship": "local",
+        "party": [],
+        "origin": "Kandy",
+        "wants_hotels": false,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [],
+      "question": null,
+      "itinerary": {
+        "destination": "Trincomalee",
+        "days": 2,
+        "start_from": "Kandy",
+        "start_assumed": false,
+        "summary": "A 2-day budget itinerary to Trincomalee starting from Kandy for a single Sri Lankan citizen. Explore historic Fort Fredrick, experience Kanniya Hot Wells, and relax around Nilaveli.",
+        "day_plans": [
+          {
+            "day": 1,
+            "theme": "Journey from Kandy & Fort Fredrick",
+            "forecast_date": "2026-11-23",
+            "travel": [
+              {
+                "from_place": "Kandy",
+                "to_place": "Trincomalee",
+                "road_distance_km": 180.0,
+                "driving_minutes": 210.0
+              }
+            ],
+            "activities": [
+              {
+                "time_of_day": "afternoon",
+                "name": "Fort Fredrick",
+                "description": "Explore Fort Fredrick, an old Dutch fort dating back to 1665 built on a peninsula. Wander through its historic grounds and spot friendly deer roaming the area.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": "2026-11-23: slight rain showers; min 24.2 °C, max 30.1 °C; chance of precipitation 88%; rainfall 4.4 mm; max wind 11.8 km/h (Open-Meteo)"
+          },
+          {
+            "day": 2,
+            "theme": "Kanniya Hot Wells & Nilaveli Coastal Visit",
+            "forecast_date": "2026-11-24",
+            "travel": [
+              {
+                "from_place": "Trincomalee",
+                "to_place": "Nilaveli",
+                "road_distance_km": 12.0,
+                "driving_minutes": 15.0
+              }
+            ],
+            "activities": [
+              {
+                "time_of_day": "morning",
+                "name": "Kanniya Hot Wells",
+                "description": "Visit the seven hot wells, popular with locals for hot spring bucket showers.",
+                "estimated_hours": 1.5,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              },
+              {
+                "time_of_day": "afternoon",
+                "name": "Nilaveli",
+                "description": "Head north to Nilaveli for coastal sights and beach relaxation.",
+                "estimated_hours": 3.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": "2026-11-24: moderate rain showers; min 24.1 °C, max 28.5 °C; chance of precipitation 100%; rainfall 13.0 mm; max wind 13.2 km/h (Open-Meteo)"
+          }
+        ],
+        "costs": [],
+        "facts": [
+          {
+            "text": "Public buses operate between Kandy and Trincomalee, including both standard buses and a pre-bookable A/C bus service.",
+            "quote": "Buses to Kandy leave at 04:00, around 9:15, 10:15, 13:45 and 14:45. The bus at 09:15 is supposed to have A/C and needs to be pre-booked, all other buses are standard (non-A/C) public buses.",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "The car driving distance from Kandy to Trincomalee is 180 km, taking approximately 3 hours 30 minutes without traffic.",
+            "quote": "Road distance: 180 km (straight line 157 km). Driving time: about 3 h 30 min by car without traffic or stops.",
+            "source": "OSRM"
+          },
+          {
+            "text": "Kanniya Hot Wells features seven natural hot springs used for traditional bucket bathing.",
+            "quote": "An unusual spring with seven hot wells, popular among locals who use the hot spring water in the various \"wells\" for bucket showers.",
+            "source": "Wikivoyage"
+          }
+        ],
+        "tips": [
+          "Wear modest attire when visiting cultural and hot spring sites like Kanniya Hot Wells.",
+          "Pack rain gear or an umbrella as precipitation is forecasted."
+        ],
+        "assumptions": [
+          "Accommodation is already booked by the traveller in Trincomalee.",
+          "The trip begins in Kandy and travel between locations is by road."
+        ],
+        "not_available": [
+          "Live OpenStreetMap attraction locations (Wikivoyage guide used as fallback).",
+          "Official verified entrance fees for Sri Lankan citizens for Pigeon Island National Park, Kanniya Hot Wells, and Fort Frederick.",
+          "Food and restaurant pricing in Trincomalee.",
+          "Travel times between attractions within Trincomalee town.",
+          "Nearby sights from OpenStreetMap (the service failed)"
+        ],
+        "warnings": [
+          "Left out suggestions that state prices, times or schedules no tool result confirms."
+        ],
+        "entrance_fees": [
+          {
+            "query": "Kanniya Hot Wells",
+            "name": null,
+            "categories": [],
+            "group": [],
+            "sources": [],
+            "conditions": "",
+            "extras": [],
+            "verified_lkr": 0.0,
+            "verified_usd": 0.0
+          }
+        ],
+        "cost_lines": [],
+        "stays": null,
+        "budget": {
+          "group": "1 Sri Lankan adult",
+          "travellers": 1,
+          "entrance_verified_lkr": 0.0,
+          "entrance_verified_usd": 0.0,
+          "entrance_estimated_lkr": 0.0,
+          "entrance_estimated_usd": 0.0,
+          "other_estimated_lkr": 0.0,
+          "other_estimated_usd": 0.0,
+          "accommodation_lkr": null,
+          "accommodation_usd": null,
+          "accommodation_note": "",
+          "total_lkr": 0.0,
+          "total_usd": 0.0,
+          "per_person_lkr": 0.0,
+          "per_person_usd": 0.0,
+          "not_verified": [],
+          "requires_confirmation": [
+            "Kanniya Hot Wells"
+          ],
+          "not_included": [
+            "Accommodation (you said you have your own)",
+            "Food and drinks",
+            "Transport fares (buses, trains, tuk-tuks, a driver)",
+            "Guides, tips and personal spending"
+          ],
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given."
+        }
+      },
+      "message_count": 13,
+      "llm_calls": 5,
+      "seconds": 90.016
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan a cheap 2-day trip to Trincomalee just for me; I'm a Sri Lankan citizen starting in Kandy. We already have a hotel.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "55e4fefc-8a7e-4df8-9570-a43568a82298"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "estimate_travel_time",
+            "arguments": "{\"destination\": \"Trincomalee\", \"origin\": \"Kandy\"}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_3177723937755075086": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a2078f-3ad2-76ff-ac06-9dee3b5efd85-0",
+        "tool_calls": [
+          {
+            "name": "get_destination_guide",
+            "args": {
+              "topic": "all",
+              "destination": "Trincomalee"
+            },
+            "id": "call_3177723937755075086",
+            "type": "tool_call"
+          },
+          {
+            "name": "find_attractions",
+            "args": {
+              "destination": "Trincomalee",
+              "category": "all"
+            },
+            "id": "call_3177723937755077269",
+            "type": "tool_call"
+          },
+          {
+            "name": "get_weather_forecast",
+            "args": {
+              "destination": "Trincomalee"
+            },
+            "id": "call_3177723937755075356",
+            "type": "tool_call"
+          },
+          {
+            "name": "estimate_travel_time",
+            "args": {
+              "destination": "Trincomalee",
+              "origin": "Kandy"
+            },
+            "id": "call_3177723937755077539",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 4723,
+          "output_tokens": 563,
+          "total_tokens": 5286,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 461
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Wikivoyage guide for Trincomalee (all topics):\n[Introduction] Trincomalee is a city in eastern Sri Lanka. Trinco (as it is often called) is emerging as a tourist destination thanks to its incredible history and beaches, especially those just north of town.\n[Understand] Trincomalee, once known as Gokarna, has been a key center of Tamil culture for centuries. The Koneswaram Temple, dating back to at least the 7th century, is a major landmark. Thanks to its natural harbour, traders from Europe, the Middle East, Africa, and Asia have been stopping by for generations. Trincomalee is situated on the 5th largest natural deepwater harbour in the world, for which it was fought over as a strategic naval base. ...\n[Get in] By plane: Cinnamon Air flies daily from Colombo (Bandaranaike International Airport). The duration of the flight is 45 minutes. Fares are US$150-200 depending on season. By bus: The bus station is across the street from the clock tower and the market. Buses to Kandy leave at 04:00, around 9:15, 10:15, 13:45 and 14:45. The bus at 09:15 is supposed to have A/C and needs to be pre-booked, all other buses are standard (non-A/C) public buses. ...\n[Get around] Trincomalee itself is a very compact town, so you can get around on foot. For longer trips, for example to Uppuveli, rickshaws are available at nearly every corner. Negotiate your fare before boarding if there is no meter — a rule of thumb is around Rs 100 per km. For Nilaveli, tuktuk drivers will want a flat price per person. ...\n[See] Pigeon Island. Sri Lanka's only marine national park has great beaches for swimming, sunbathing and snorkelling. Turtles and black-tip reef sharks can be seen but the majority of the island's coral reef has been killed as of 2025. 1 Fort Fredrick. Fort Fredrick is an old Dutch fort dating back to 1665 located on a peninsula North East of the town center. ...\n[Do] 1 Kanniya Hot Wells. 07:00-19:00 daily. An unusual spring with seven hot wells, popular among locals who use the hot spring water in the various \"wells\" for bucket showers. The facilities are badly maintained though, so bring a large towel to change your clothes as the change rooms are very dirty. Do not wear only a swimsuit as this will cause offence. Your accommodation will probably be able to lend you a bucket to take. ...\n[Sleep] Very few tourists stay in Trincomalee itself. When tourists visit Trinco, they tend to stay in Uppuveli, 5km north of town, for its beaches. 10km further north is the popular tourist town of Nilaveli, which Wikivoyage treats as a separate town. The two main regions where guesthouses can be found are along the beach at Uppuveli and beyond, and south of Fort Frederick on the beach. Shop around as prices vary greatly. ...\nNot covered by this article: safety and health. Do not fill this in.\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Trincomalee\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_destination_guide",
+        "id": "7e193815-6287-4ddd-abd0-255433a46d52",
+        "tool_call_id": "call_3177723937755075086",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Attractions unavailable for 'Trincomalee': No Overpass server could complete the search. overpass-api.de: The Overpass API returned HTTP 502. overpass.private.coffee: The Overpass API did not respond within 30 seconds.\nFALLBACK: sights named in the Wikivoyage guide instead (no distances, not filtered by category).\nWikivoyage guide for Trincomalee (see and do):\n[See] Pigeon Island. Sri Lanka's only marine national park has great beaches for swimming, sunbathing and snorkelling. Turtles and black-tip reef sharks can be seen but the majority of the island's coral reef has been killed as of 2025. 1 Fort Fredrick. Fort Fredrick is an old Dutch fort dating back to 1665 located on a peninsula North East of the town center. It has a long and storied history and was the site of battles involving (at different times) the Portuguese, Dutch, French and English navies. It is still actively garrisoned, but is open to visitors and is a great place to explore, especially for history buffs. There is a nice Hindu temple atop the cliff at the end of the peninsula with spectacular views. There are also kiosks where you can relax with a cold coconut. Friendly spotted deer roam the fort's forested areas, apparently descendents of a pair kept as pets by an English family in the 1800s. US$10. (updated Aug 2025) 2 Commonwealth War Cemetery, Nilaveli Rd. The final resting place of over 600 Allied soldiers and sailors who died in Trincomalee during World War II. You will be asked for a donation upon entering. ...\n[Do] 1 Kanniya Hot Wells. 07:00-19:00 daily. An unusual spring with seven hot wells, popular among locals who use the hot spring water in the various \"wells\" for bucket showers. The facilities are badly maintained though, so bring a large towel to change your clothes as the change rooms are very dirty. Do not wear only a swimsuit as this will cause offence. Your accommodation will probably be able to lend you a bucket to take. The bathing area is very small and it gets crowded especially on the weekends. Hundreds of stalls line the road at the entrance. Rs 500 for foreigners. (updated Jun 2025) 2 Snorkelling. A snorkelling trip to Pigeon Island is a must. There are local boats that will take you to this island for a fee of about US$30 (return). Snorkelling is a great way to see the abundant sea life. Sadly the coral is not respected by the locals. (updated Jun 2025) Dolphin and whale watching. There is dolphin and whale watching available from most of the guest houses on Uppaveli beach (high season only). (updated Jun 2025)\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Trincomalee\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.\nMention only sights named above, say they come from Wikivoyage because OpenStreetMap could not be reached, and do not invent attractions or distances.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "find_attractions",
+        "id": "113c9458-e27d-4256-9f61-e133eb1ce44d",
+        "tool_call_id": "call_3177723937755077269",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Weather forecast for Trincomalee (Eastern Province, Sri Lanka), at lat 8.58, lon 81.23, elevation 10 m.\nTimes are local (Asia/Colombo).\nCurrent conditions (2026-11-23 14:00): 29.9 °C, light drizzle, wind 10.3 km/h, precipitation 0.1 mm.\nDaily forecast (3 days):\n- 2026-11-23 (Mon): slight rain showers; min 24.2 °C, max 30.1 °C; chance of precipitation 88%; rainfall 4.4 mm; max wind 11.8 km/h.\n- 2026-11-24 (Tue): moderate rain showers; min 24.1 °C, max 28.5 °C; chance of precipitation 100%; rainfall 13.0 mm; max wind 13.2 km/h.\n- 2026-11-25 (Wed): slight rain showers; min 23.9 °C, max 28.2 °C; chance of precipitation 100%; rainfall 8.1 mm; max wind 11.9 km/h.\nSource: Open-Meteo live forecast API (open-meteo.com).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_weather_forecast",
+        "id": "f8d5539d-0718-4378-95c7-7517a8a469c7",
+        "tool_call_id": "call_3177723937755075356",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Road trip from Kandy (Central Province, Sri Lanka) to Trincomalee (Eastern Province, Sri Lanka):\n- Road distance: 180 km (straight line 157 km).\n- Driving time: about 3 h 30 min by car without traffic or stops.\nThis is a free-flow car estimate: real journeys, especially on hill roads or by bus, tuk-tuk or train, usually take longer. Say so.\nSource: OSRM routing on OpenStreetMap roads (© OpenStreetMap contributors).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "estimate_travel_time",
+        "id": "3d0dd35a-eb73-403e-8252-789f4e12ea2f",
+        "tool_call_id": "call_3177723937755077539",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "get_attraction_prices",
+            "arguments": "{\"attractions\": [\"Pigeon Island National Park\", \"Kanniya Hot Wells\", \"Fort Frederick\"]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_6199868881080426604": "EoUHCoIHAWkUfRMqG8HiHw3WZAyezzT4luIAipwYscry2y1EyAWVsQQS3rmisbQBllBnMFJdgyBg5NZ9ZLsB8hUVQyCAMQ5yQOr8nXCLKnFKSLFTv9/MTfj13Bg6L3t0oHGtFZgD9vnW41VtwjSuvCNn0UUmc45BMDbL5MrffTAG1Mur800NcPFzUTKZ0VfanyVi7Y810+XtvizuFiv8cVELERCFRpss3/iEZdS52yEp8Y19qPN7GfRpbEP80IzcrvUW+2SB1kmHupdCyWl6GxnJ6l3wfvUniEsdfpW5rxYe0PtSuIhbRKDhxvi+EuLnbF6Lw7smiamcUKFikVDF2e0tX6j/YT0sCC3Kxk3nh9hSUQ9wGxFKTspJ/dOq30IrI9uvAUHDckT/mi/jF/XAAfz/4tgCqQw7bAhPHywrtYDKaKUcgFhL5LyugeJmngceyNBwDSHYBElE/p+NieFeKHsMcYeg9O66oT4NzD62y/eO2UgN5XHKTDzqbELJRMn4E0WE6jEcJ+W3SWY1r8bU7XrXu3CtNLDNM3wzlKH84MwvEzVKkGC/+rsqszuLVh6vnx5f3uYnt21ooZ0WRv5IQxaa21wCBE6jyQEHZ5Mw8+mAXWsw+jF8dQPPjZ6aAidUPScx2QYduHqAr9VOfC0aW7SHauRSqlKAOcjjZybiQhsWKUWR+nNl1cHFyvs5U3zzKNeFSEwA5lq81nNYFjhyynaHfo7Qcu6L1/eNE8EwGAYvRDgCqVO8jozrWAbNlBRBk+gJF0/v0MY8/wB8ckSiuGYXBGsp3FbiU/+ELYLtd9CWUtYWW5ClUHrtd63W6jXP0XGmg1F//JmBlRrSXda5rHhkOzDnoIXYCrr+dyr2BrP6Vajqg5888KmWoMMVfpflvXKRmLhlfhB2ap7Y86OPmynA8Z7wlQf1rU+xBcBclF5HUag5O+yPMT3IREO3KObwLyfVdcuDMb7pW5+WUyZpW7ymMxpbE9irTqRK4TI3h2sMndnTPVpvtyQecXlGNyBINdUM9et7EczGY2JoSv5O4vo403x8IuJ0I1Fz/Jx6y28zDnYDsIHlLeEayws4/trCyW2BEdMdHEGBQ62duB00DSOOXqgWL2Ccp//tcgsneOtC++EPk2bWgRW62d8FKBgABI8WMd9SpswTytAaE00UGuRHS9nVG4ZwpfqjJ3HQlYhe7QOATxVWxg=="
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a2078f-f3ef-7143-9947-155ab106e3ca-0",
+        "tool_calls": [
+          {
+            "name": "get_attraction_prices",
+            "args": {
+              "attractions": [
+                "Pigeon Island National Park",
+                "Kanniya Hot Wells",
+                "Fort Frederick"
+              ]
+            },
+            "id": "call_6199868881080426604",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 7256,
+          "output_tokens": 224,
+          "total_tokens": 7480,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 188
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Ticket prices by visitor category (from official sources only):\n\nPigeon Island National Park: no price found in any official source. Requires confirmation; do not state a price for it.\n\nKanniya Hot Wells: no price found in any official source. Requires confirmation; do not state a price for it.\n\nFort Frederick: no price found in any official source. Requires confirmation; do not state a price for it.\n\nGroup: 1 Sri Lankan adult.\nVerified entrance fees for the group: LKR 0 (USD 0)\nRequires confirmation: Pigeon Island National Park, Kanniya Hot Wells, Fort Frederick\nOther-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\nUse these figures exactly. Never fill in a 'Not verified' price, never use one category's price for another, and label every estimate as an estimate. In an itinerary, entrance fees are added from these results automatically: do not put them in costs.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_attraction_prices",
+        "id": "6aed448d-798b-4199-8d28-ecfcd39fb15b",
+        "tool_call_id": "call_6199868881080426604",
+        "artifact": {
+          "checked_on": "2026-11-23",
+          "lkr_per_usd": 332.392719,
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.",
+          "problems": [],
+          "attractions": [
+            {
+              "query": "Pigeon Island National Park",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Kanniya Hot Wells",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Fort Frederick",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            }
+          ]
+        },
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "estimate_travel_time",
+            "arguments": "{\"destination\": \"Nilaveli\", \"origin\": \"Trincomalee\"}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_2218217532687322992": "ErIICq8IAWkUfRPoXCtC8TgBbGG08JnSBPzQx0NRrHfriQeeO9bt4f1OHxPu18goptNkVGFPrJO0i6EOrcc56YDTYrKGWq9MR7pNE4pSiAjJnMyp+sK0S6wXo9X26aW8RtS5lp0qJUqc2xlGimbOeRE5e+LN46YN0yN+WoPnOSqShr+2n6pPhxhQFgOjRxixH4pwCHW9WUgqBNKR3GyyDAogvDPkWwxX58737Vjiz6ZZGMyA+JrnxxCMy7b7cR1eB4JcJMngDpv43j3KTjd6W5dE08F7/w5K+HBnyDYN57NF+8sULxONKN1UyfCcTKExzfZLTHFojlcmVj8fUshcP5BvmAbbo1iAePXKMv715fexUAOBLzmDFQb5rMGfkMbxkkZOIvouCxF+Hobb8/FQNgwrQgAdYs74XrcuG+Nqdrj8GLp57+ckkRMi7nV1ezzB2frGBw5sawEZ/RYzZ6iWSlCu4v9uHsewqxsJlpVkcg31P6CAPs6ab0F3XFdttVkVUnoNvL4+eG3KGFKYLL5NqM7BULC23tNfbe8PvqYVqIbEb+xfIKXrsLUTSAmJtgrFurvM9uMzYfEbaZnvYC11rvwdf1Klw6A04N7no+h+W6P5AxDu4n2d8jCXSNNi2PQJ5ACpgNdB5m7oP0u9xlGm7/bz9SLI9WXG2XQ4B8aQIiWbWSKCt3BR39Rt9FiPQnT/sJPo5AnoqrtLxFQRx09MaTBt63t6lySxkZW2lyX356yr9e7oO6kycQAxksEBr36kuw7gRHWpln9mPWVTGmRv1SX9MuJFpN388pm16wCyFurowTMADeLXAjjx9OzkMAUF90YWOgRuTjB4WRZTa2uJgXh+yjnazq/7R5aB/sz4Sfj1hkh8yUL1IYuw3jXKkynjeG6XobzdIt6HRmn9wtwmsLcHssqrKCelY+bOozKPSzxQag5NLHSy2n8XcIhvsENaa67Y/A6YJvAObN5QFUle0sZXYu1uEPa4cZfriw36xyV1d3jFFurRphuN+zvYKvj+uBR3We3PSnNkuks+qfgX9DXNGruzu9S5+GWQ4IRGVCnPs5EZekQK9uOsNjtgaCsjXHoz/+xEfWS0orV0ICpjSES7i0g/bUr3z6BYcB1Miw/6ztHdMa19Z7lxUYBxkXGZ1Olcxtpr/ow4rb1aKhHRVaP4ZlZARsqMplRTjz/xKKg860ghJ2WTGwhnPtyexEF/XI4aJWY8csZ2kLmBFEgI04cRmbeoTEaQfzZ3FUiFdBM5LEX/RdBZ/T4JnIbrrYtjMETz6NByOOHNQD8lpWRf+Oe8SO3i8UsKvG+93+SLFN9Vk3wOWt0yg/eSnLvcI9E16GjeB+TeURtlAtQ5gq47KCXm3sWPMY2h4wG1he8Yzx/0ruSNhMNIiN+CzR1nr0G81/6giWxL3YJV8noGsJhVKu6Zd/1Y"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20790-0e8d-7445-97e7-8ac73d82725c-0",
+        "tool_calls": [
+          {
+            "name": "estimate_travel_time",
+            "args": {
+              "destination": "Nilaveli",
+              "origin": "Trincomalee"
+            },
+            "id": "call_2218217532687322992",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 7717,
+          "output_tokens": 269,
+          "total_tokens": 7986,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 240
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Road trip from Trincomalee (Eastern Province, Sri Lanka) to Nilaveli (Trincomalee District, Eastern Province, Sri Lanka):\n- Road distance: 12 km (straight line 11 km).\n- Driving time: about 15 min by car without traffic or stops.\nThis is a free-flow car estimate: real journeys, especially on hill roads or by bus, tuk-tuk or train, usually take longer. Say so.\nSource: OSRM routing on OpenStreetMap roads (© OpenStreetMap contributors).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "estimate_travel_time",
+        "id": "d53db0bf-c491-4542-bf10-58b7e42a7f59",
+        "tool_call_id": "call_2218217532687322992",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "submit_itinerary",
+            "arguments": "{\"summary\": \"A 2-day budget itinerary to Trincomalee starting from Kandy for a single Sri Lankan citizen. Explore historic Fort Fredrick, experience Kanniya Hot Wells, and relax around Nilaveli.\", \"costs\": [], \"destination\": \"Trincomalee\", \"start_assumed\": false, \"not_available\": [\"Live OpenStreetMap attraction locations (Wikivoyage guide used as fallback).\", \"Official verified entrance fees for Sri Lankan citizens for Pigeon Island National Park, Kanniya Hot Wells, and Fort Frederick.\", \"Food and restaurant pricing in Trincomalee.\", \"Travel times between attractions within Trincomalee town.\"], \"start_from\": \"Kandy\", \"day_plans\": [{\"day\": 1, \"activities\": [{\"source\": \"Wikivoyage\", \"name\": \"Fort Fredrick\", \"description\": \"Explore Fort Fredrick, an old Dutch fort dating back to 1665 built on a peninsula. Wander through its historic grounds and spot friendly deer roaming the area.\", \"distance_km\": null, \"estimated_hours\": 2, \"time_of_day\": \"afternoon\"}], \"forecast_date\": \"2026-11-23\", \"travel\": [{\"road_distance_km\": 180, \"from_place\": \"Kandy\", \"to_place\": \"Trincomalee\", \"driving_minutes\": 210}], \"theme\": \"Journey from Kandy & Fort Fredrick\"}, {\"theme\": \"Kanniya Hot Wells & Nilaveli Coastal Visit\", \"forecast_date\": \"2026-11-24\", \"activities\": [{\"name\": \"Kanniya Hot Wells\", \"source\": \"Wikivoyage\", \"description\": \"Visit the seven hot wells, popular with locals for hot spring bucket showers.\", \"distance_km\": null, \"estimated_hours\": 1.5, \"time_of_day\": \"morning\"}, {\"name\": \"Nilaveli\", \"time_of_day\": \"afternoon\", \"estimated_hours\": 3, \"description\": \"Head north to Nilaveli for coastal sights and beach relaxation.\", \"distance_km\": null, \"source\": \"Wikivoyage\"}], \"travel\": [{\"road_distance_km\": 12, \"from_place\": \"Trincomalee\", \"driving_minutes\": 15, \"to_place\": \"Nilaveli\"}], \"day\": 2}], \"assumptions\": [\"Accommodation is already booked by the traveller in Trincomalee.\", \"The trip begins in Kandy and travel between locations is by road.\"], \"facts\": [{\"source\": \"Wikivoyage\", \"quote\": \"Buses to Kandy leave at 04:00, around 9:15, 10:15, 13:45 and 14:45. The bus at 09:15 is supposed to have A/C and needs to be pre-booked, all other buses are standard (non-A/C) public buses.\", \"text\": \"Public buses operate between Kandy and Trincomalee, including both standard buses and a pre-bookable A/C bus service.\"}, {\"text\": \"The car driving distance from Kandy to Trincomalee is 180 km, taking approximately 3 hours 30 minutes without traffic.\", \"quote\": \"Road distance: 180 km (straight line 157 km). Driving time: about 3 h 30 min by car without traffic or stops.\", \"source\": \"OSRM\"}, {\"source\": \"Wikivoyage\", \"text\": \"Kanniya Hot Wells features seven natural hot springs used for traditional bucket bathing.\", \"quote\": \"An unusual spring with seven hot wells, popular among locals who use the hot spring water in the various \\\"wells\\\" for bucket showers.\"}], \"days\": 2, \"tips\": [\"Wear modest attire when visiting cultural and hot spring sites like Kanniya Hot Wells.\", \"Negotiate tuk-tuk fares before boarding if meters are not available (rule of thumb is around LKR 100 per km).\", \"Pack rain gear or an umbrella as precipitation is forecasted.\"]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_7801681198218680502": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20790-420c-7786-9743-6aa6dc915cca-0",
+        "tool_calls": [
+          {
+            "name": "submit_itinerary",
+            "args": {
+              "summary": "A 2-day budget itinerary to Trincomalee starting from Kandy for a single Sri Lankan citizen. Explore historic Fort Fredrick, experience Kanniya Hot Wells, and relax around Nilaveli.",
+              "costs": [],
+              "destination": "Trincomalee",
+              "start_assumed": false,
+              "not_available": [
+                "Live OpenStreetMap attraction locations (Wikivoyage guide used as fallback).",
+                "Official verified entrance fees for Sri Lankan citizens for Pigeon Island National Park, Kanniya Hot Wells, and Fort Frederick.",
+                "Food and restaurant pricing in Trincomalee.",
+                "Travel times between attractions within Trincomalee town."
+              ],
+              "start_from": "Kandy",
+              "day_plans": [
+                {
+                  "day": 1,
+                  "activities": [
+                    {
+                      "source": "Wikivoyage",
+                      "name": "Fort Fredrick",
+                      "description": "Explore Fort Fredrick, an old Dutch fort dating back to 1665 built on a peninsula. Wander through its historic grounds and spot friendly deer roaming the area.",
+                      "distance_km": null,
+                      "estimated_hours": 2,
+                      "time_of_day": "afternoon"
+                    }
+                  ],
+                  "forecast_date": "2026-11-23",
+                  "travel": [
+                    {
+                      "road_distance_km": 180,
+                      "from_place": "Kandy",
+                      "to_place": "Trincomalee",
+                      "driving_minutes": 210
+                    }
+                  ],
+                  "theme": "Journey from Kandy & Fort Fredrick"
+                },
+                {
+                  "theme": "Kanniya Hot Wells & Nilaveli Coastal Visit",
+                  "forecast_date": "2026-11-24",
+                  "activities": [
+                    {
+                      "name": "Kanniya Hot Wells",
+                      "source": "Wikivoyage",
+                      "description": "Visit the seven hot wells, popular with locals for hot spring bucket showers.",
+                      "distance_km": null,
+                      "estimated_hours": 1.5,
+                      "time_of_day": "morning"
+                    },
+                    {
+                      "name": "Nilaveli",
+                      "time_of_day": "afternoon",
+                      "estimated_hours": 3,
+                      "description": "Head north to Nilaveli for coastal sights and beach relaxation.",
+                      "distance_km": null,
+                      "source": "Wikivoyage"
+                    }
+                  ],
+                  "travel": [
+                    {
+                      "road_distance_km": 12,
+                      "from_place": "Trincomalee",
+                      "driving_minutes": 15,
+                      "to_place": "Nilaveli"
+                    }
+                  ],
+                  "day": 2
+                }
+              ],
+              "assumptions": [
+                "Accommodation is already booked by the traveller in Trincomalee.",
+                "The trip begins in Kandy and travel between locations is by road."
+              ],
+              "facts": [
+                {
+                  "source": "Wikivoyage",
+                  "quote": "Buses to Kandy leave at 04:00, around 9:15, 10:15, 13:45 and 14:45. The bus at 09:15 is supposed to have A/C and needs to be pre-booked, all other buses are standard (non-A/C) public buses.",
+                  "text": "Public buses operate between Kandy and Trincomalee, including both standard buses and a pre-bookable A/C bus service."
+                },
+                {
+                  "text": "The car driving distance from Kandy to Trincomalee is 180 km, taking approximately 3 hours 30 minutes without traffic.",
+                  "quote": "Road distance: 180 km (straight line 157 km). Driving time: about 3 h 30 min by car without traffic or stops.",
+                  "source": "OSRM"
+                },
+                {
+                  "source": "Wikivoyage",
+                  "text": "Kanniya Hot Wells features seven natural hot springs used for traditional bucket bathing.",
+                  "quote": "An unusual spring with seven hot wells, popular among locals who use the hot spring water in the various \"wells\" for bucket showers."
+                }
+              ],
+              "days": 2,
+              "tips": [
+                "Wear modest attire when visiting cultural and hot spring sites like Kanniya Hot Wells.",
+                "Negotiate tuk-tuk fares before boarding if meters are not available (rule of thumb is around LKR 100 per km).",
+                "Pack rain gear or an umbrella as precipitation is forecasted."
+              ]
+            },
+            "id": "call_7801681198218680502",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 8116,
+          "output_tokens": 3799,
+          "total_tokens": 11915,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 2899
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Itinerary checked and shown to the traveller. Do not repeat it.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "submit_itinerary",
+        "id": "05a5ea98-02e8-47c2-b037-319763bc8f1e",
+        "tool_call_id": "call_7801681198218680502",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "# 2-day trip to Trincomalee\n\nA 2-day budget itinerary to Trincomalee starting from Kandy for a single Sri Lankan citizen. Explore historic Fort Fredrick, experience Kanniya Hot Wells, and relax around Nilaveli.\n\n**Starting point:** Kandy\n\n## Day 1: Journey from Kandy & Fort Fredrick\n*Weather:* 2026-11-23: slight rain showers; min 24.2 °C, max 30.1 °C; chance of precipitation 88%; rainfall 4.4 mm; max wind 11.8 km/h (Open-Meteo)\n*Travel:* Kandy to Trincomalee: 180 km, about 3 h 30 min by car without traffic (OSRM)\n- **Afternoon: Fort Fredrick** (about 2 h) - Explore Fort Fredrick, an old Dutch fort dating back to 1665 built on a peninsula. Wander through its historic grounds and spot friendly deer roaming the area. _(Wikivoyage)_\n\n## Day 2: Kanniya Hot Wells & Nilaveli Coastal Visit\n*Weather:* 2026-11-24: moderate rain showers; min 24.1 °C, max 28.5 °C; chance of precipitation 100%; rainfall 13.0 mm; max wind 13.2 km/h (Open-Meteo)\n*Travel:* Trincomalee to Nilaveli: 12 km, about 15 min by car without traffic (OSRM)\n- **Morning: Kanniya Hot Wells** (about 1.5 h) - Visit the seven hot wells, popular with locals for hot spring bucket showers. _(Wikivoyage)_\n- **Afternoon: Nilaveli** (about 3 h) - Head north to Nilaveli for coastal sights and beach relaxation. _(Wikivoyage)_\n\n## Entrance fees (official sources)\n- Kanniya Hot Wells: no official price found. Requires confirmation before you go.\n\n## Trip budget\n- Group: 1 Sri Lankan adult\n- Verified entrance fees: LKR 0 (USD 0)\n- TOTAL estimated budget for the group: LKR 0 (USD 0)\n- Per person: LKR 0 (USD 0)\n- **Requires confirmation**\n  - Kanniya Hot Wells\n- **Not included (no reliable source here)**\n  - Accommodation (you said you have your own)\n  - Food and drinks\n  - Transport fares (buses, trains, tuk-tuks, a driver)\n  - Guides, tips and personal spending\n- Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\n\n## Practical information\n- Public buses operate between Kandy and Trincomalee, including both standard buses and a pre-bookable A/C bus service. _(Wikivoyage)_\n- The car driving distance from Kandy to Trincomalee is 180 km, taking approximately 3 hours 30 minutes without traffic. _(OSRM)_\n- Kanniya Hot Wells features seven natural hot springs used for traditional bucket bathing. _(Wikivoyage)_\n\n## Suggestions\n_General advice, not checked against live data._\n- Wear modest attire when visiting cultural and hot spring sites like Kanniya Hot Wells.\n- Pack rain gear or an umbrella as precipitation is forecasted.\n\n## Assumptions\n- Accommodation is already booked by the traveller in Trincomalee.\n- The trip begins in Kandy and travel between locations is by road.\n\n## Please note\n- Left out suggestions that state prices, times or schedules no tool result confirms.\n\n## Not available\n- Live OpenStreetMap attraction locations (Wikivoyage guide used as fallback).\n- Official verified entrance fees for Sri Lankan citizens for Pigeon Island National Park, Kanniya Hot Wells, and Fort Frederick.\n- Food and restaurant pricing in Trincomalee.\n- Travel times between attractions within Trincomalee town.\n- Nearby sights from OpenStreetMap (the service failed)\n\n_Sources: Wikivoyage, OSRM, Open-Meteo._",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "itinerary",
+        "id": "3f9f0631-9d01-46ba-8bc9-7d994fe67e67",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

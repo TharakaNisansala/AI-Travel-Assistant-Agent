@@ -292,6 +292,32 @@ def test_sources_keep_only_the_destination_they_belong_to():
     assert src.guide_prices["LKR"] == [300.0, 500.0]  # not Kandy's 2,000
 
 
+@pytest.mark.parametrize(
+    ("sleep", "currency", "prices"),
+    [
+        ("Guesthouses charge Rs 3,000-5,000 a night.", "LKR", [3000.0, 5000.0]),
+        ("Rooms cost Rs. 2,500 – Rs 4,000.", "LKR", [2500.0, 4000.0]),
+        ("Doubles for 6,000 - 9,000 rupees.", "LKR", [6000.0, 9000.0]),
+        ("Hotels from US$20-40 a night.", "USD", [20.0, 40.0]),
+        ("Boutique villas $80–$120.", "USD", [80.0, 120.0]),
+    ],
+)
+def test_both_ends_of_a_price_range_count_as_quoted(sleep, currency, prices):
+    guide = GUIDE_ELLA.replace("[Stay safe]", f"[Sleep] {sleep}\n[Stay safe]")
+    src = sources_for("Ella", collect_evidence(full_thread(guide=guide)))
+    assert set(prices) <= set(src.guide_prices[currency])
+
+
+def test_an_accommodation_price_from_the_guide_is_kept():
+    guide = GUIDE_ELLA.replace(
+        "[Stay safe]",
+        "[Sleep] Guesthouses charge Rs 3,000-5,000 a night.\n[Stay safe]",
+    )
+    room = cost("Guesthouse double room per night (top of range)", "LKR", lkr=5000)
+    checked = ground(draft(costs=[room]), full_thread(guide=guide))
+    assert [c.amount_lkr for c in checked.costs] == [5000]
+
+
 # --- Activities -----------------------------------------------------------------------
 
 

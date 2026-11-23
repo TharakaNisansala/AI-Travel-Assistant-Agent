@@ -1,0 +1,54 @@
+# Verified ticket prices entered by a person from an official source.
+#
+# Read by pricing_service.load_curated(). Every entry is ONE price for ONE
+# visitor category; an attraction with several rates has several entries.
+# Prices here are used before the live CCF table (see pricing_service.py).
+#
+# Rules (the loader rejects an entry that breaks them):
+#   - Only add a price you have read in the source named by source_url:
+#     an official website, gazette, circular or published tariff (status
+#     official), or the attraction/operator itself (status operator). A
+#     reputable secondary source may be added only with status secondary.
+#   - Never copy a price from a blog, an old guide or an AI answer.
+#   - last_verified is the date you checked the source. source_updated,
+#     effective_date and expiry_date are the source's own dates, if given.
+#   - A child price needs min_age and/or max_age from the source; without
+#     them the agent will not apply it.
+#
+# Fields:
+#   attraction_id      lower-case id, e.g. horton-plains
+#   attraction_name    e.g. Horton Plains National Park
+#   aliases            other names travellers use (optional list)
+#   nationality        local | saarc | non_saarc | foreign (one price for every
+#                      non-Sri Lankan visitor)
+#   age_group          adult | child | student | senior
+#   min_age, max_age   the source's age limits (optional)
+#   amount, currency   e.g. 60, USD   (LKR or USD, as the source quotes it)
+#   ticket_type        entrance | activity | vehicle | parking | other
+#   unit               person | vehicle | group | activity
+#   conditions         taxes, what is included, documents needed (optional)
+#   source_url         https:// link to the page or document
+#   source_authority   e.g. Department of Wildlife Conservation
+#   status             official | operator | secondary
+#   last_verified      YYYY-MM-DD
+#   source_updated, effective_date, expiry_date   YYYY-MM-DD (optional)
+#
+# Example (NOT a real price; copy the shape, not the numbers):
+#
+#   - attraction_id: example-park
+#     attraction_name: Example National Park
+#     aliases: [Example Park]
+#     nationality: local
+#     age_group: child
+#     min_age: 6
+#     max_age: 12
+#     amount: 0
+#     currency: LKR
+#     ticket_type: entrance
+#     unit: person
+#     source_url: https://www.example.gov.lk/tariff.pdf
+#     source_authority: Example Authority
+#     status: official
+#     last_verified: 2026-11-19
+
+prices: []

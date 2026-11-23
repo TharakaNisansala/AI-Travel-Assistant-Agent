@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-sigiriya-solo-packed",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:26:50.976932Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "I'm a German citizen travelling alone: 4 days around Sigiriya, and pack in as much as possible.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Sigiriya",
+        "days": 4,
+        "interests": [],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": 1,
+        "children": 0,
+        "pace": "packed",
+        "nationality": "German",
+        "citizenship": "non_saarc",
+        "party": [
+          {
+            "nationality": "German",
+            "age_group": "adult",
+            "count": 1
+          }
+        ],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "Where will you start your trip to Sigiriya from?",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 2.749
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "I'm a German citizen travelling alone: 4 days around Sigiriya, and pack in as much as possible.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "4a1510cb-cc9e-48e3-a0b7-e14b187cde58"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "Where will you start your trip to Sigiriya from?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "21f51267-befb-4b28-aa97-45aa5b98847a",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

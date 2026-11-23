@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-nuwara-eliya-midrange",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:27:05.743498Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "We're a couple looking for a mid-range 3-day stay in Nuwara Eliya next weekend.",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Nuwara Eliya",
+        "days": 3,
+        "interests": [],
+        "budget": "mid-range",
+        "travel_dates": null,
+        "travellers": 2,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": true,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "citizenship",
+        "origin"
+      ],
+      "question": "What citizenship do the travellers have? Many sites charge Sri Lankan, SAARC and other foreign citizens different ticket prices (citizenship counts, not where you live).",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 1.797
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "We're a couple looking for a mid-range 3-day stay in Nuwara Eliya next weekend.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "fda81c53-1ab1-44a2-b51d-518147ad7dbd"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "What citizenship do the travellers have? Many sites charge Sri Lankan, SAARC and other foreign citizens different ticket prices (citizenship counts, not where you live).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "a93f3e12-149f-4d6f-a524-dff280c1cb06",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

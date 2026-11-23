@@ -224,6 +224,7 @@ def test_topics_are_exactly_the_agreed_ones():
         "getting_there",
         "getting_around",
         "see_and_do",
+        "accommodation",
         "safety",
     )
 
@@ -234,11 +235,27 @@ def test_one_topic_keeps_only_its_sections():
     assert guide.missing == ()
 
 
-def test_all_covers_every_topic_but_never_sleep_or_eat():
+def test_all_covers_every_topic_including_sleep_but_never_eat():
     guide = select_topic(ELLA_ARTICLE, "all")
     titles = [s.title for s in guide.sections]
-    assert titles == [INTRODUCTION, "Get in", "Get around", "See", "Do", "Stay healthy"]
-    assert "Sleep" not in titles
+    assert titles == [
+        INTRODUCTION,
+        "Get in",
+        "Get around",
+        "See",
+        "Do",
+        "Sleep",
+        "Stay healthy",
+    ]
+
+
+def test_accommodation_is_the_sleep_section():
+    guide = select_topic(ELLA_ARTICLE, "accommodation")
+    assert [(s.title, s.text) for s in guide.sections] == [
+        ("Sleep", "Many guesthouses.")
+    ]
+    no_sleep = Article("X", "u", {INTRODUCTION: "Intro."})
+    assert select_topic(no_sleep, "accommodation").missing == ("accommodation",)
 
 
 def test_a_topic_is_missing_only_when_none_of_its_sections_exist():
@@ -248,6 +265,7 @@ def test_a_topic_is_missing_only_when_none_of_its_sections_exist():
     assert select_topic(no_safety, "all").missing == (
         "getting_there",
         "getting_around",
+        "accommodation",
         "safety",
     )
 

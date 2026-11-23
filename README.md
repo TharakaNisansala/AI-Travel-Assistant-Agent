@@ -1,13 +1,13 @@
 # AI Travel Assistant (Sri Lanka)
 
-A single-agent travel assistant built with **LangGraph** and **Google Gemini**. Ask it to plan a trip ("Plan 3 days in Ella; I like hiking") and it gathers real data from free public APIs, writes a day-by-day itinerary, checks every place, price and travel time against the tool results, and tells you what it could not confirm.
+A single-agent travel assistant built with **LangGraph** and **Google Gemini** (Groq and Cloudflare Workers AI also work; see [Setup](#setup)). Ask it to plan a trip ("Plan 3 days in Ella; I like hiking") and it gathers real data from free public APIs, writes a day-by-day itinerary, checks every place, price and travel time against the tool results, and tells you what it could not confirm.
 
 It is a learning project, built stage by stage (see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md)). Each module's docstring explains the concept it demonstrates.
 
 ## What it does
 
 - **Plans grounded itineraries.** Sights, distances, prices and forecasts must come from a tool result. Anything else is removed or flagged.
-- **Asks when it must.** "Plan me a trip" gets a question about the place and the number of days, and the chat then carries on from your answer.
+- **Asks when it must.** Before planning, it asks for what is still missing, one question at a time: the place, the number of days, how many people are travelling, their citizenship (ticket prices depend on it) and children when needed, where the trip starts, and whether you want hotel suggestions (and a budget level if so). Each question comes with quick-reply buttons on the web page, and one message that states everything skips the questions.
 - **Edits plans.** Follow-ups such as "make day 2 easier" replace the plan.
 - **Remembers.** Conversations are saved in SQLite and resume after a restart. Preferences ("I'm vegetarian") carry over to new conversations.
 - **Fails honestly.** If an API is down, it says what is missing instead of making it up. The `FAULT_INJECT` switch simulates outages.
@@ -22,9 +22,11 @@ It is a learning project, built stage by stage (see [docs/PROJECT_PLAN.md](docs/
 | `get_destination_guide` | Wikivoyage (MediaWiki API) |
 | `estimate_travel_time` | OSRM road routing |
 | `convert_currency` | ExchangeRate-API (open access) |
+| `get_attraction_prices` | The Central Cultural Fund's ticket-price page ([ccf.gov.lk](https://ccf.gov.lk/is/)), cached for 24 hours in `.data/prices.sqlite`, plus hand-checked entries in `src/ai_travel_assistant/data/attraction_prices.yaml` (empty for now). A price quoted in one currency gets the other (LKR or USD) from ExchangeRate-API |
+| `suggest_hotels` | Wikivoyage "Sleep" listings (MediaWiki API), with their last-edited year. Suggestions only: no booking or availability |
 | `search_destinations` | A small built-in guide to Sri Lankan destinations |
 
-Only Gemini needs a key.
+None of the data sources needs a key. Only the LLM provider does: Gemini (the default), Groq or Cloudflare Workers AI, chosen with `LLM_PROVIDER` (see [Setup](#setup)).
 
 ## Architecture
 
@@ -39,7 +41,7 @@ config:
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	llm(llm)
-	tools(tools<hr/><small><em>__tools = search_destinations, get_weather_forecast, find_attractions, get_destination_guide, estimate_travel_time, convert_currency</em></small>)
+	tools(tools<hr/><small><em>__tools = search_destinations, get_weather_forecast, find_attractions, get_destination_guide, estimate_travel_time, convert_currency, get_attraction_prices, suggest_hotels</em></small>)
 	save_memory(save_memory)
 	understand_request(understand_request)
 	ask_clarification(ask_clarification)
@@ -72,8 +74,8 @@ graph TD;
 ```
 
 - **`load_memory` / `save_memory`**: long-term preferences, stored in a LangGraph Store.
-- **`understand_request`**: one Gemini call that reads the message's intent and trip details. It routes the message to the agent, to a clarification question (`ask_clarification` → `wait_for_reply`, a human-in-the-loop interrupt), or to a polite off-topic reply.
-- **`llm` ⇄ `tools`**: the ReAct loop. Gemini picks tools and reads their results, with a cap on rounds (`fallback_response` writes the best answer once the cap is reached).
+- **`understand_request`**: one LLM call that reads the message's intent and trip details. It routes the message to the agent, to a clarification question (`ask_clarification` → `wait_for_reply`, a human-in-the-loop interrupt), or to a polite off-topic reply.
+- **`llm` ⇄ `tools`**: the ReAct loop. The model picks tools and reads their results, with a cap on rounds (`fallback_response` writes the best answer once the cap is reached).
 - **`compose_answer`**: no LLM. It validates the submitted itinerary against a Pydantic schema, repairs it once or salvages what is valid, grounds it against the tool results, and renders it as Markdown.
 
 The interfaces on top of the graph:
@@ -95,7 +97,19 @@ uv sync
 copy .env.example .env      # then set GEMINI_API_KEY and GEMINI_MODEL
 ```
 
-Get a key from [Google AI Studio](https://aistudio.google.com/). Set `GEMINI_MODEL` to a current Flash model ID. The free tier is small (at the time of writing, about 5 requests a minute and 20 a day), and one itinerary takes about 4–5 requests.
+Get a key from [Google AI Studio](https://aistudio.google.com/). Set `GEMINI_MODEL` to a current Flash model ID. The free tier is small (at the time of writing, about 5 requests a minute and 20 a day), and one itinerary takes about 3–5 requests (3–4 in the live evaluation of 2026-11-23, counting the understanding call).
+
+**Using Groq instead.** Set `LLM_PROVIDER=groq` in `.env`, then set `GROQ_API_KEY` (from the [Groq console](https://console.groq.com/keys)) and `GROQ_MODEL` to a current Groq model ID that supports tool use. Every entry point (CLI chat, Streamlit page, Studio, evals) uses whichever provider is set. Switch back with `LLM_PROVIDER=gemini`. `smoke_gemini.py` below always checks Gemini only.
+
+**Using Cloudflare Workers AI.** Set `LLM_PROVIDER=cloudflare`, then `CLOUDFLARE_API_TOKEN` (a token with Workers AI permission) and `CLOUDFLARE_ACCOUNT_ID`. `CLOUDFLARE_MODEL` is optional and defaults to `@cf/zai-org/glm-4.7-flash`; another model must support function calling. The agent reaches Workers AI through its OpenAI-compatible endpoint (`/ai/v1/chat/completions`) with `langchain-openai`, so tool calling, structured output and token streaming work as with the other providers.
+
+Known limitations of `glm-4.7-flash` here (seen in live checks on 2026-11-18):
+
+- **Itineraries are less reliable than with Gemini.** In one "Plan 2 days in Kandy" run it passed malformed place names to `estimate_travel_time` (`University_of_Peradeniya`), reached the 4-round tool cap, and its `submit_itinerary` failed validation, so the fallback reply was shown. That run coincided with an Overpass outage. A follow-up edit in the same chat produced a valid, checked itinerary.
+- **Hidden reasoning tokens.** A one-sentence answer used about 540 output tokens and took about 10 s; one full plan used about 45,000 tokens and about 3 minutes. All of it counts toward the Workers AI daily free allowance (neurons).
+- **Occasional slow calls.** One structured-output call hit the 120 s timeout. The agent retries a timeout once, then shows the "busy" message.
+- **Daily allowance message.** When the daily allowance runs out, the chat may show the rate-limit message rather than the daily-quota one (the exact Cloudflare error has not been seen yet).
+- `langchain-openai` may print a harmless Pydantic "serializer warnings" message during structured-output calls.
 
 Check the setup with one request:
 

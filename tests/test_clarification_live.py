@@ -1,7 +1,8 @@
-"""Stage 6 live checks: real Gemini understanding and the clarification flow.
+"""Stage 6 live checks: real LLM understanding and the clarification flow.
 
-Opt-in only (pytest -m live). Mind the free tier (5 requests a minute, 20 a
-day): the deliverable test makes about 5 Gemini calls, the accuracy set 6.
+Opt-in only (pytest -m live). Uses LLM_PROVIDER, so Gemini or Groq. Mind the
+Gemini free tier (5 requests a minute, 20 a day): the deliverable test makes
+about 5 calls, the accuracy set 6.
 Run one at a time, e.g.:
     uv run pytest -m live tests/test_clarification_live.py -k deliverable
 """
@@ -27,14 +28,26 @@ from ai_travel_assistant.tool_calling import (
     pending_question,
 )
 
-# (message, expected route). "clarify" only for plans missing a critical detail.
+# (message, expected route). "clarify" only for plans missing a PLAN_FIELDS
+# detail (place, days, group, citizenship, start, hotels), so the one "agent"
+# plan states all of them, like the eval's route-agent-full-plan.
 ROUTING_SET = (
     ("Plan me a trip", "clarify"),
     ("Can you prepare an itinerary for Kandy?", "clarify"),  # days missing
     ("I want a 4 day holiday, plan it for me", "clarify"),  # place missing
-    ("Plan 3 days in Ella, I love hiking", "agent"),
+    (
+        "Plan 3 days in Ella, I love hiking. Just me; I'm a Sri Lankan citizen "
+        "starting from Colombo. No hotel needed.",
+        "agent",
+    ),
     ("Where can I go surfing in Sri Lanka?", "agent"),  # question, no plan
     ("Write my Python homework for me", "off_topic"),
+)
+# The reply to "Plan me a trip" answers every question at once, so the next
+# turn plans (as in the eval's multi-clarify-then-plan).
+FULL_REPLY = (
+    "Galle, 2 days, just me; I'm a Sri Lankan citizen starting from Colombo; "
+    "no hotel needed."
 )
 
 
@@ -55,10 +68,10 @@ def test_live_deliverable_plan_me_a_trip_asks_then_continues():
     first = ask_agent(graph, "live", "Plan me a trip")
     assert first[-1].name == CLARIFICATION_NAME
     question = pending_question(graph, "live")
-    assert question and "Where" in question and "days" in question
+    assert question and "Where" in question
 
     time.sleep(FREE_TIER_DELAY_SECONDS)
-    second = ask_agent(graph, "live", "Galle, 2 days")
+    second = ask_agent(graph, "live", FULL_REPLY)
 
     state = graph.get_state({"configurable": {"thread_id": "live"}}).values
     assert pending_question(graph, "live") is None

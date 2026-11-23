@@ -1,4 +1,4 @@
-"""Stage 3: a tool-calling agent (the ReAct loop) with LangGraph and Gemini.
+"""Stage 3: a tool-calling agent (the ReAct loop) with LangGraph and an LLM.
 
 What this file demonstrates:
   1. bind_tools(): telling the LLM which tools exist.
@@ -16,10 +16,11 @@ Flow:
 Reason (llm decides) -> Act (tools runs) -> Observe (llm reads the result) ...
 until the LLM replies without a tool call.
 
-The model is passed in, so the same graph runs with Gemini in the app and with a
-scripted fake model in the offline tests.
+The model is passed in, so the same graph runs with the LLM set by LLM_PROVIDER
+(Gemini by default; see llm_basics.py) in the app and with a scripted fake
+model in the offline tests.
 
-Run from the project root (usually 2 Gemini calls: one to choose the tool, one
+Run from the project root (usually 2 LLM calls: one to choose the tool, one
 to write the answer):
     uv run python -m ai_travel_assistant.tool_calling "Find places for hiking"
     uv run python -m ai_travel_assistant.tool_calling --steps "Where can I surf?"
@@ -30,7 +31,7 @@ to write the answer):
 
 Stage 4 adds get_weather_forecast, which calls the real Open-Meteo API (2 HTTP
 requests, no API key). The graph does not change: a new tool only needs to be
-added to TOOLS, and Gemini decides from its docstring when to call it.
+added to TOOLS, and the model decides from its docstring when to call it.
 find_attractions (OpenStreetMap via Overpass, 2 HTTP requests) is added the
 same way. With three tools, SYSTEM_PROMPT says how they relate: search to choose
 a place, attractions for what to see at a named place, weather for forecasts.
@@ -45,7 +46,7 @@ For multi-day itineraries, SYSTEM_PROMPT adds a generic plan: gather guide,
 attractions, weather and travel time in one step; optionally a few travel
 times and currency conversions in a second; then write the plan day by day
 from tool results only, with sources, a stated default origin (DEFAULT_ORIGIN)
-and a "Not available" list. Usually 3-4 Gemini calls per itinerary.
+and a "Not available" list. Usually 3-4 LLM calls per itinerary.
 
 Stage 5 adds short-term memory. build_tool_agent_graph(model, checkpointer=...)
 compiles the same loop with a checkpointer, which saves the message history
@@ -54,7 +55,7 @@ LangGraph loads that thread's saved history first and the add_messages reducer
 appends the new message, so a follow-up ("make day 2 easier") sees the earlier
 plan. Without a checkpointer every run starts a fresh conversation, as before.
 run_agent_chat() is the terminal loop around ask_agent, with /new for a fresh
-thread (each message makes the usual 2-4 Gemini calls):
+thread (each message makes the usual 2-4 LLM calls):
     uv run python -m ai_travel_assistant.tool_calling --chat
     uv run python -m ai_travel_assistant.tool_calling --chat --steps
 The chat saves its checkpoints in a SQLite file (DEFAULT_CHAT_DB), so a
@@ -62,16 +63,22 @@ conversation survives a restart; reopen it with the id printed at the start:
     uv run python -m ai_travel_assistant.tool_calling --chat --thread <id>
 The chat also has long-term memory (long_term_memory.py): load_memory reads the
 traveller's saved preferences before the LLM, and save_memory stores new ones
-after the answer, but only spends a Gemini call when a message looks like a
+after the answer, but only spends an LLM call when a message looks like a
 preference ("I'm vegetarian"). /prefs and /forget show or clear them; --user
 picks the traveller:
     uv run python -m ai_travel_assistant.tool_calling --chat --user tharaka
 
 Stage 6 adds request understanding (request_understanding.py). In --chat every
-message is first read by one extra Gemini call: what it is for (plan, modify,
-question, off_topic) and which trip details it gives. A plan without a
-destination or number of days makes the agent ask, and the chat pauses with
-interrupt() until the traveller answers; off-topic requests get a fixed reply
+message is first read by one extra LLM call: what it is for (plan, modify,
+question, off_topic) and which trip details it gives. Before a plan, the
+agent asks for each PLAN_FIELDS detail still missing, one question at a time:
+destination, days, how many travellers, their citizenship, a list of who is
+travelling (for a mixed group, or when someone's citizenship is unclear), how
+many are children (groups of two or more), the starting place,
+whether they want hotel suggestions, and a budget level (only if they want
+hotels and gave no nightly amount). The chat pauses with interrupt() until the
+traveller answers; after len(PLAN_FIELDS) questions in a row the agent plans
+with stated assumptions. Off-topic requests get a fixed reply
 without calling the agent. --no-clarify turns this off to save quota (the
 graph is then the Stage 5 one):
     uv run python -m ai_travel_assistant.tool_calling --chat --no-clarify
@@ -80,9 +87,10 @@ Stage 7 makes the loop robust (robustness.py, faults.py). A tool that raises
 becomes an error result for that call only; the LLM sees a repaired history
 (tool calls left without results by a crash are closed); route_after_agent
 replaces tools_condition and stops a turn after MAX_TOOL_ROUNDS tool rounds,
-ending it with one wrap-up call. In --chat, transient Gemini errors are
-retried once by the llm node's RetryPolicy (the client itself does not retry,
-and 429s are never retried), and failures are shown as short, safe messages.
+ending it with one wrap-up call. In --chat, transient LLM errors are
+retried once by the llm node's RetryPolicy (only the Groq client retries on
+its own, for short tokens-per-minute 429s; the node never retries a 429),
+and failures are shown as short, safe messages.
 Try an outage without breaking anything real (PowerShell):
     $env:FAULT_INJECT = "weather"
     uv run python -m ai_travel_assistant.tool_calling --chat
@@ -91,7 +99,7 @@ Stage 8 adds structured itineraries (itinerary_output.py,
 itinerary_grounding.py). In --chat and one-shot mode the agent finishes an
 itinerary by calling submit_itinerary; compose_answer validates it, checks
 every factual value against the tool results for that destination, and
-renders Markdown, all without an extra Gemini call. An invalid submission
+renders Markdown, all without an extra LLM call. An invalid submission
 is sent back once, then salvaged. /itinerary (chat) or --json (one-shot)
 prints the checked plan as JSON:
     uv run python -m ai_travel_assistant.tool_calling --json "Plan 2 days in Ella"
@@ -183,9 +191,11 @@ from ai_travel_assistant.tools import (
     convert_currency,
     estimate_travel_time,
     find_attractions,
+    get_attraction_prices,
     get_destination_guide,
     get_weather_forecast,
     search_destinations,
+    suggest_hotels,
 )
 
 if TYPE_CHECKING:  # only for the annotation; llm_basics loads Gemini code
@@ -200,6 +210,8 @@ TOOLS: tuple[BaseTool, ...] = (
     get_destination_guide,
     estimate_travel_time,
     convert_currency,
+    get_attraction_prices,
+    suggest_hotels,
 )
 
 # Node names. "tools" is the name tools_condition returns, so the tool node must
@@ -221,6 +233,12 @@ SYSTEM_PROMPT = (
     "places suit an activity, call search_destinations. Recommend only places it "
     "returned, and mention that they come from the built-in guide. If it finds "
     "nothing, say so and suggest a broader search. "
+    # Any place in Sri Lanka, not only the built-in guide's.
+    "The built-in guide is only for choosing where to go: when the traveller "
+    "names any place in Sri Lanka, even one it does not list, use the other "
+    "tools for that place. If the tools say a place was not found in Sri "
+    "Lanka, ask the traveller to check the spelling or name the nearest town, "
+    "and do not plan for it. "
     "If they also want to know what to see, call find_attractions for the one "
     "place that fits best, not for every result. "
     # WHAT to see at a named place.
@@ -238,15 +256,27 @@ SYSTEM_PROMPT = (
     "answer only on the forecast it returns, using its units. "
     # Background from the travel guide.
     "When the traveller asks what a named place is like, how to get there or "
-    "around, or for practical or safety tips, call get_destination_guide with "
-    "the place name and the matching topic (overview, getting_there, "
-    "getting_around, see_and_do, safety; all when planning a whole visit). "
+    "around, where to stay, or for practical or safety tips, call "
+    "get_destination_guide with the place name and the matching topic "
+    "(overview, getting_there, getting_around, see_and_do, accommodation, "
+    "safety; all when planning a whole visit). For named hotels or guest "
+    "houses, call suggest_hotels with the place name instead; name only places "
+    "it returned, never invent hotels, and say you cannot book or check "
+    "availability. "
     "Mention that the guide is from Wikivoyage and may be out of date. For a "
     "list of nearby sights with distances, prefer find_attractions. "
     # Distances between places.
     "When the traveller asks how far apart two places are or how long the "
     "journey takes, call estimate_travel_time with the two place names, and "
     "say the time is a car estimate without traffic. "
+    # Ticket prices: only from the pricing tool, per visitor category.
+    "For any entrance or ticket price (heritage sites, museums, parks, "
+    "gardens), call get_attraction_prices with the attraction names; never "
+    "state an entrance fee it did not return, and never take one from the "
+    "guide or from memory. Quote each visitor category's price as given, "
+    "with its source link and date; say 'not verified' where it says so, and "
+    "label estimates as estimates. When planning a visit, call it once for "
+    "the paid sights you include. "
     # Money.
     "When the traveller asks about exchange rates or what an amount is worth "
     "in another currency, call convert_currency with ISO codes such as USD or "
@@ -267,8 +297,9 @@ SYSTEM_PROMPT = (
     f"use {DEFAULT_ORIGIN} and state in the plan that you assumed it. "
     "In the next step you may call estimate_travel_time for at most two "
     "nearby places the guide suggests visiting from there, and "
-    "convert_currency for at most three prices the guide quotes, so the plan "
-    "shows each in both LKR and USD. "
+    "convert_currency for at most three prices the guide quotes (one of them "
+    "a place-to-stay price, if the guide gives one), so the plan shows each "
+    "in both LKR and USD. "
     "Then write the plan day by day, using only sights, travel times, "
     "weather and prices from the tool results, and say where each comes "
     "from (OpenStreetMap, Wikivoyage, OSRM, Open-Meteo or the exchange rate "
@@ -276,7 +307,8 @@ SYSTEM_PROMPT = (
     "the sights it names. Give weather only for the days the forecast "
     "covers and say no forecast is available for the others. End with a "
     "short 'Not available' list of what the tools could not provide, such "
-    "as hotel or food prices, travel times between sights inside a town, or "
+    "as room availability, food prices, travel times between sights inside "
+    "a town, or "
     "any tool that failed. "
     "Keep answers short; an itinerary may be longer but stays to the point."
 )
@@ -307,8 +339,9 @@ class AgentState(MessagesState):
     user_prefs: list[str]
     trip_request: dict  # merged trip details (a TripRequest as a plain dict)
     intent: str | None  # plan, modify, question, off_topic; None if unknown
-    missing_fields: list[str]  # critical fields still missing for a plan
+    missing_fields: list[str]  # PLAN_FIELDS still missing for a plan
     clarification_context: str | None  # the question the latest reply answers
+    clarification_field: str | None  # the field that question asks for
     clarification_rounds: int  # questions asked in a row this turn
     itinerary: dict  # Stage 8: the last checked itinerary (JSON-ready data)
 
@@ -520,9 +553,10 @@ def build_tool_agent_graph(
     Stage 7: the LLM may run tools max_tool_rounds times per turn; asking once
     more sends the turn to fallback_response (one wrap-up call). A tool that
     raises becomes an error result for that call only. llm_retry (e.g.
-    robustness.llm_retry_policy()) retries the llm node on transient Gemini
-    errors; it is the ONLY retry layer for Gemini, so build the model with
-    max_retries=0 when passing it. None: a failed call fails the turn.
+    robustness.llm_retry_policy()) retries the llm node on transient LLM
+    errors. On Gemini and Cloudflare it is the ONLY retry layer, so build the
+    model with agent_client_retries(settings) (0 there; Groq's client keeps
+    its retries for short 429s). None: a failed call fails the turn.
 
     Stage 8, structured_itinerary=True: the model also gets submit_itinerary
     (the final-answer tool; never run by the tools node). A call to it goes to
@@ -898,8 +932,9 @@ def build_chat_graph(
 ) -> CompiledStateGraph:
     """The full agent of --chat: the CLI, the web page and Studio all use it.
 
-    Stage 7: one retry layer. The client does not retry (max_retries=0); the
-    llm node retries a transient error once (llm_retry), never a 429. The
+    Stage 7: one retry layer. The llm node retries a transient error once
+    (llm_retry), never a 429. The client does not retry on Gemini; on Groq it
+    waits out short tokens-per-minute 429s (see agent_client_retries). The
     understander and the extractor are not retried: they fall back (to the
     agent, or to not saving) instead. Both run at temperature 0 and the
     extractor only when its gate matches. Stage 8: itineraries come back
@@ -908,10 +943,11 @@ def build_chat_graph(
     persistence_provided: LangGraph Studio attaches its own checkpointer and
     store to the graph, so it is built without them (see studio.py).
     """
-    from ai_travel_assistant.llm_basics import build_llm
+    from ai_travel_assistant.llm_basics import agent_client_retries, build_llm
 
-    llm = build_llm(settings, temperature=1.0, max_retries=0)
-    precise_llm = build_llm(settings, temperature=0, max_retries=0)
+    retries = agent_client_retries(settings)
+    llm = build_llm(settings, temperature=1.0, max_retries=retries)
+    precise_llm = build_llm(settings, temperature=0, max_retries=retries)
     return build_tool_agent_graph(
         llm,
         checkpointer=checkpointer,
@@ -930,7 +966,7 @@ def build_chat_graph(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Ask the tool-calling travel agent (usually 2 Gemini calls)."
+        description="Ask the tool-calling travel agent (usually 2 LLM calls)."
     )
     parser.add_argument(
         "question", nargs="?", help='e.g. "Find places in Sri Lanka for hiking"'
@@ -941,7 +977,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--chat",
         action="store_true",
-        help="multi-turn chat with memory (each message makes Gemini calls)",
+        help="multi-turn chat with memory (each message makes LLM calls)",
     )
     parser.add_argument(
         "--thread", metavar="ID", help="with --chat: continue a saved conversation"
@@ -967,7 +1003,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "with --chat: skip request understanding and clarification "
-            "questions (saves one Gemini call per message)"
+            "questions (saves one LLM call per message)"
         ),
     )
     parser.add_argument(

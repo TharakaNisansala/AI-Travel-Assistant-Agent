@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-off-topic-joke",
+  "category": "routing",
+  "started_at": "2026-11-23T06:29:01.333461Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Tell me a joke about cats.",
+      "route": "off_topic",
+      "intent": "off_topic",
+      "trip_request": null,
+      "missing_fields": [],
+      "question": null,
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 0.578
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Tell me a joke about cats.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "85b33402-52c4-4fe1-a6b6-601ffc717e8b"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "I can only help with travel in Sri Lanka: places to visit, itineraries, weather, getting around and costs. What trip can I help you plan?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "off_topic",
+        "id": "434cc9e7-cdce-4f9b-bbb7-660e5e25d782",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

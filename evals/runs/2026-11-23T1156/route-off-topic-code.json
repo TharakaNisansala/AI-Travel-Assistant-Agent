@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "route-off-topic-code",
+  "category": "routing",
+  "started_at": "2026-11-23T06:29:13.631951Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Fix the bug in my JavaScript code.",
+      "route": "off_topic",
+      "intent": "off_topic",
+      "trip_request": null,
+      "missing_fields": [],
+      "question": null,
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 1.094
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Fix the bug in my JavaScript code.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "39edc4eb-e581-4421-9727-cb4702b8d8af"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "I can only help with travel in Sri Lanka: places to visit, itineraries, weather, getting around and costs. What trip can I help you plan?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "off_topic",
+        "id": "3d69b36e-c2e8-48a4-b9bd-fee55c0023a4",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

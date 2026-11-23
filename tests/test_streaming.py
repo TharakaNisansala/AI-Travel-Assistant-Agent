@@ -28,7 +28,7 @@ from ai_travel_assistant.streaming import (
     visible_history,
 )
 from ai_travel_assistant.tool_calling import ask_agent, build_tool_agent_graph
-from tests.test_clarification import FakeUnderstander, understood
+from tests.test_clarification import COMPLETE, FakeUnderstander, understood
 from tests.test_itinerary_graph import (
     TODAY,
     Scripted,
@@ -72,10 +72,10 @@ def streaming(*replies, fail_on=None) -> StreamingScripted:
 
 
 ANSWERS = {
-    "Plan 2 days in Ella.": understood("plan", destination="Ella", days=2),
+    "Plan 2 days in Ella.": understood("plan", destination="Ella", days=2, **COMPLETE),
     "What is Ella like?": understood("question"),
     "Plan me a trip.": understood("plan"),
-    "Ella, 2 days.": understood("plan", destination="Ella", days=2),
+    "Ella, 2 days.": understood("plan", destination="Ella", days=2, **COMPLETE),
     "Tell me a joke.": understood("off_topic"),
 }
 

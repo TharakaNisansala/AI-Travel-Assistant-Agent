@@ -29,6 +29,7 @@ from ai_travel_assistant.robustness import MAX_TOOL_ROUNDS, repair_history
 from ai_travel_assistant.schemas import RequestUnderstanding, TripRequest
 from ai_travel_assistant.tool_calling import (
     COMPOSE_ANSWER,
+    TOOLS,
     TOOLS_NODE,
     ask_agent,
     build_tool_agent_graph,
@@ -202,7 +203,7 @@ def test_structured_output_is_off_by_default():
     graph = build_tool_agent_graph(model, checkpointer=InMemorySaver())
     ask_agent(graph, "t1", "Hello")
     assert "submit_itinerary" not in model.bound
-    assert len(model.bound) == 6
+    assert len(model.bound) == len(TOOLS)
     assert COMPOSE_ANSWER not in graph.get_graph().nodes
     assert ITINERARY_RULE not in model.calls[0][0].content
 
@@ -211,7 +212,8 @@ def test_when_on_the_model_can_submit_but_the_tools_node_cannot_run_it():
     model = scripted("Hi.")
     graph = build(model)
     ask_agent(graph, "t1", "Hello")
-    assert model.bound[-1] == "submit_itinerary" and len(model.bound) == 7
+    assert model.bound[-1] == "submit_itinerary"
+    assert len(model.bound) == len(TOOLS) + 1
     assert (
         "submit_itinerary" not in graph.builder.nodes[TOOLS_NODE].runnable.tools_by_name
     )
@@ -496,7 +498,16 @@ class Understander:
         answers = {
             "Plan me a trip": RequestUnderstanding(intent="plan"),
             "Ella, 2 days": RequestUnderstanding(
-                intent="plan", trip=TripRequest(destination="Ella", days=2)
+                intent="plan",
+                trip=TripRequest(
+                    destination="Ella",
+                    days=2,
+                    origin="Colombo",
+                    wants_hotels=False,
+                    travellers=2,
+                    nationality="British",
+                    children=0,
+                ),
             ),
             "Make day 2 easier": RequestUnderstanding(intent="modify"),
         }

@@ -368,3 +368,172 @@ def test_without_a_final_tool_the_router_is_unchanged():
     route = make_route_after_agent()
     messages = [HumanMessage("Plan"), AIMessage("", tool_calls=[submit_call()])]
     assert route({"messages": messages}) == "tools"
+
+
+# --- Groq errors (LLM_PROVIDER=groq) ------------------------------------------------
+
+
+def groq_status_error(code: int, message: str):
+    """A real Groq SDK error, as langchain-groq raises it (has .status_code)."""
+    import groq
+
+    classes = {429: groq.RateLimitError, 400: groq.BadRequestError}
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(code, request=request)
+    error_class = classes.get(code, groq.InternalServerError)
+    return error_class(message, response=response, body=None)
+
+
+def groq_timeout():
+    import groq
+
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return groq.APITimeoutError(request=request)
+
+
+def groq_connection_error():
+    import groq
+
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return groq.APIConnectionError(request=request)
+
+
+GROQ_DAILY = groq_status_error(
+    429,
+    "Rate limit reached for model `m` on requests per day (RPD): Limit 1000",
+)
+GROQ_PER_MINUTE = groq_status_error(
+    429,
+    "Rate limit reached for model `m` on requests per minute (RPM): Limit 30",
+)
+
+
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (GROQ_DAILY, QUOTA_MESSAGE),
+        (GROQ_PER_MINUTE, RATE_LIMIT_MESSAGE),
+        (groq_status_error(503, "Service unavailable"), BUSY_MESSAGE),
+        (groq_timeout(), BUSY_MESSAGE),
+        (groq_connection_error(), BUSY_MESSAGE),
+        (groq_status_error(400, "tool_use_failed"), REJECTED_MESSAGE),
+    ],
+)
+def test_groq_errors_get_the_same_messages(exc, message):
+    assert describe_llm_error(exc) == message
+
+
+@pytest.mark.parametrize(
+    "exc", [groq_status_error(503, "x"), groq_timeout(), groq_connection_error()]
+)
+def test_groq_transient_errors_are_retried(exc):
+    assert is_transient_llm_error(exc)
+
+
+GROQ_TOO_LARGE = groq_status_error(
+    413,
+    "Error code: 413 - {'error': {'message': 'Request too large for model `m` "
+    "on tokens per minute (TPM): Limit 8000, Requested 8952', 'type': 'tokens', "
+    "'code': 'rate_limit_exceeded'}}",
+)
+
+
+def test_groq_413_over_the_minute_limit_is_a_rate_limit():
+    assert is_rate_limited(GROQ_TOO_LARGE)
+    assert not is_transient_llm_error(GROQ_TOO_LARGE)
+    assert not is_quota_exhausted(GROQ_TOO_LARGE)
+    assert describe_llm_error(GROQ_TOO_LARGE) == RATE_LIMIT_MESSAGE
+    # Any other 413 is not a rate limit.
+    assert not is_rate_limited(groq_status_error(413, "Payload too large"))
+
+
+def test_groq_429s_are_not_retried():
+    assert not is_transient_llm_error(GROQ_PER_MINUTE)
+    assert is_quota_exhausted(GROQ_DAILY)
+    assert not is_quota_exhausted(GROQ_PER_MINUTE)
+
+
+# --- Cloudflare Workers AI (LLM_PROVIDER=cloudflare) -------------------------------
+# langchain-openai raises the openai SDK's errors. The account ID is part of the
+# URL, so these fakes put a made-up one there and check it never leaks.
+
+CF_ACCOUNT = "fake-account-id-0001"
+CF_TOKEN = "fake-cf-token-0002"
+CF_URL = (
+    f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/v1/chat/completions"
+)
+
+
+def cloudflare_status_error(code: int, message: str):
+    """A real openai SDK error, as ChatOpenAI raises it for Workers AI."""
+    import openai
+
+    classes = {
+        429: openai.RateLimitError,
+        400: openai.BadRequestError,
+        401: openai.AuthenticationError,
+    }
+    response = httpx.Response(code, request=httpx.Request("POST", CF_URL))
+    error_class = classes.get(code, openai.InternalServerError)
+    return error_class(message, response=response, body=None)
+
+
+def cloudflare_timeout():
+    import openai
+
+    return openai.APITimeoutError(request=httpx.Request("POST", CF_URL))
+
+
+def cloudflare_connection_error():
+    import openai
+
+    return openai.APIConnectionError(request=httpx.Request("POST", CF_URL))
+
+
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (cloudflare_status_error(429, "Too many requests"), RATE_LIMIT_MESSAGE),
+        (cloudflare_status_error(503, "Service unavailable"), BUSY_MESSAGE),
+        (cloudflare_status_error(500, "Internal error"), BUSY_MESSAGE),
+        (cloudflare_timeout(), BUSY_MESSAGE),
+        (cloudflare_connection_error(), BUSY_MESSAGE),
+        (
+            cloudflare_status_error(400, "model does not support tools"),
+            REJECTED_MESSAGE,
+        ),
+        (cloudflare_status_error(401, "Authentication error"), REJECTED_MESSAGE),
+    ],
+)
+def test_cloudflare_errors_get_the_same_messages(exc, message):
+    assert describe_llm_error(exc) == message
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        cloudflare_status_error(503, "x"),
+        cloudflare_timeout(),
+        cloudflare_connection_error(),
+    ],
+)
+def test_cloudflare_transient_errors_are_retried(exc):
+    assert is_transient_llm_error(exc)
+
+
+def test_cloudflare_429_is_not_retried():
+    assert not is_transient_llm_error(cloudflare_status_error(429, "Too many requests"))
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        cloudflare_status_error(401, f"Invalid token {CF_TOKEN} for {CF_URL}"),
+        cloudflare_status_error(503, f"Upstream failed for account {CF_ACCOUNT}"),
+        cloudflare_timeout(),
+    ],
+)
+def test_cloudflare_error_messages_never_show_the_token_or_account(exc):
+    message = describe_llm_error(exc)
+    assert CF_TOKEN not in message
+    assert CF_ACCOUNT not in message

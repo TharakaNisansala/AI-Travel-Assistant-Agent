@@ -1,8 +1,8 @@
 """Stage 4 checks: does the LLM pick the right tool for each kind of question?
 
-With six tools, some of them overlapping (guide "see_and_do" vs
+With eight tools, some of them overlapping (guide "see_and_do" vs
 find_attractions), tool choice depends on names, docstrings and SYSTEM_PROMPT.
-This file holds a fixed set of 15 prompts, each with the tool(s) the agent's
+This file holds a fixed set of 19 prompts, each with the tool(s) the agent's
 FIRST step should call, and scores Gemini against it.
 
 Only the first step is checked: one Gemini request per prompt, no tools run.
@@ -11,7 +11,7 @@ search_destinations; the weather call comes a step later, so it is not part of
 that case.
 
 The offline tests check the dataset itself and the scoring. The live test
-spends 15 Gemini requests (most of the 20/day free quota) and takes about 3.5
+spends 19 Gemini requests (almost all of the 20/day free quota) and takes about 4.5
 minutes, because requests are paced to stay under 5 per minute. Run it ALONE,
 on a day with quota to spare:
     uv run pytest -m live -s tests/test_tool_selection.py::test_live_tool_selection
@@ -81,6 +81,26 @@ CASES: tuple[Case, ...] = (
         "A tuk-tuk ride costs 2500 LKR. How much is that in euros?",
         "convert_currency",
     ),
+    # Ticket prices: only from the pricing tool, never the guide or memory.
+    case(
+        "How much is the entrance ticket for Sigiriya?",
+        "get_attraction_prices",
+        also_ok=("get_destination_guide",),
+    ),
+    case(
+        "What do foreign tourists pay to enter Polonnaruwa and Anuradhapura?",
+        "get_attraction_prices",
+    ),
+    # Places to stay: named hotels only from suggest_hotels.
+    case(
+        "Can you suggest some budget guest houses in Ella?",
+        "suggest_hotels",
+    ),
+    case(
+        "Where should we stay in Kandy? Mid-range hotels are fine.",
+        "suggest_hotels",
+        also_ok=("get_destination_guide",),
+    ),
     # Several tools at once.
     case(
         "I'm visiting Kandy next week. What should I see, and what will the "
@@ -93,8 +113,8 @@ CASES: tuple[Case, ...] = (
     case("Hi! What kinds of things can you help me with?"),
 )
 
-# 13 of 15 correct (about 87%). Below that, docstrings or SYSTEM_PROMPT need work.
-PASS_MARK = 13
+# 17 of 19 correct (about 89%). Below that, docstrings or SYSTEM_PROMPT need work.
+PASS_MARK = 17
 # Free tier: 5 requests per minute. 13 s apart keeps a safe margin.
 SECONDS_BETWEEN_REQUESTS = 13
 
@@ -112,7 +132,7 @@ def called_tools(message: AIMessage) -> set[str]:
 
 
 def test_there_are_fifteen_cases_with_unique_prompts():
-    assert len(CASES) == 15
+    assert len(CASES) == 19
     assert len({c.prompt for c in CASES}) == len(CASES)
 
 
@@ -162,7 +182,7 @@ def test_no_tool_case_fails_if_any_tool_is_called():
     assert not is_correct(expected, {"search_destinations"})
 
 
-# --- Live: score Gemini (15 requests) -----------------------------------------
+# --- Live: score Gemini (19 requests) -----------------------------------------
 
 
 @pytest.mark.live

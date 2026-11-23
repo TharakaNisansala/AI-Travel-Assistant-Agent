@@ -66,6 +66,8 @@ TOOL_STEPS = {
     "get_destination_guide": "📖 Reading the travel guide for {destination}",
     "estimate_travel_time": "🚗 Estimating the drive from {origin} to {destination}",
     "convert_currency": "💱 Converting {amount} {from_currency} to {to_currency}",
+    "get_attraction_prices": "🎟️  Checking official ticket prices",
+    "suggest_hotels": "🏨 Finding places to stay in {destination}",
     SUBMIT_TOOL: "📝 Writing your itinerary",
 }
 NODE_STEPS = {

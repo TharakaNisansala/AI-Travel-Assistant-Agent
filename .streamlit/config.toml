@@ -1,0 +1,13 @@
+# Streamlit settings for the web page (src/ai_travel_assistant/web_app.py).
+# Read from the folder you start `streamlit run` in: the project root.
+
+[theme]
+base = "light"
+primaryColor = "#0F766E"            # ocean teal: buttons, focus, links
+backgroundColor = "#FBF9F5"         # warm off-white page
+secondaryBackgroundColor = "#F3EEE5" # sand: sidebar, inputs
+textColor = "#1E293B"               # slate ink
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"  # hide the developer menu and the Deploy button

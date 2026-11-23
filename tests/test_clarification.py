@@ -23,9 +23,21 @@ from ai_travel_assistant.request_understanding import (
     route_after_understanding,
     trip_prompt_note,
 )
-from ai_travel_assistant.schemas import RequestUnderstanding, TripRequest
+from ai_travel_assistant.schemas import PartyMember, RequestUnderstanding, TripRequest
 
 # --- Helpers --------------------------------------------------------------------
+
+
+# The details asked after the destination and days. Fakes in other test
+# files add these to a plan request so that it is complete and runs in one turn;
+# the questions themselves are tested here and in test_clarification_graph.
+COMPLETE = {
+    "origin": "Colombo",
+    "wants_hotels": False,
+    "travellers": 2,
+    "nationality": "British",  # the code maps it to non_saarc
+    "children": 0,
+}
 
 
 class FakeUnderstander:
@@ -100,10 +112,136 @@ def test_same_destination_in_other_case_is_the_same_trip():
     assert merged["days"] == 3
 
 
+FULL_TRIP = {
+    "destination": "Galle",
+    "days": 2,
+    "travellers": 2,
+    "citizenship": "non_saarc",
+    "children": 0,
+    "origin": "Colombo",
+    "wants_hotels": False,
+}
+ALL_FIELDS = [
+    "destination",
+    "days",
+    "travellers",
+    "citizenship",
+    "origin",
+    "wants_hotels",
+]
+
+
 def test_missing_critical_treats_blank_as_missing():
-    assert missing_critical(None) == ["destination", "days"]
-    assert missing_critical({"destination": "  ", "days": 2}) == ["destination"]
-    assert missing_critical({"destination": "Galle", "days": 2}) == []
+    # children is asked only once the group size is known (not of one person).
+    assert missing_critical(None) == ALL_FIELDS
+    assert missing_critical({**FULL_TRIP, "destination": "  "}) == ["destination"]
+    assert missing_critical(FULL_TRIP) == []
+
+
+def test_missing_fields_come_in_the_order_they_are_asked():
+    assert missing_critical({"days": 2, "origin": "Kandy"}) == [
+        "destination",
+        "travellers",
+        "citizenship",
+        "wants_hotels",
+    ]
+    # A room budget is asked only of someone who wants hotel suggestions.
+    hotels = {**FULL_TRIP, "wants_hotels": True}
+    assert missing_critical(hotels) == ["budget"]
+    assert missing_critical({**hotels, "budget": "luxury"}) == []
+    assert missing_critical({**hotels, "room_budget": 10000}) == []
+    group_only = {k: v for k, v in FULL_TRIP.items() if k != "children"}
+    assert missing_critical(group_only) == ["children"]
+    assert missing_critical({**FULL_TRIP, "citizenship": "mixed"}) == ["party"]
+
+
+def test_a_listed_party_answers_every_group_question():
+    trip = {
+        **FULL_TRIP,
+        "citizenship": None,
+        "children": None,
+        "party": [{"nationality": "Sri Lankan", "age_group": "adult", "count": 2}],
+    }
+    assert missing_critical(trip) == []
+
+
+def test_a_new_destination_keeps_only_the_group():
+    merged = merge_trip(FULL_TRIP, TripRequest(destination="Ella"))
+    assert merged["destination"] == "Ella"
+    # About the people: kept.
+    assert (merged["travellers"], merged["citizenship"], merged["children"]) == (
+        2,
+        "non_saarc",
+        0,
+    )
+    # About the old trip: dropped.
+    assert merged["origin"] is None
+    assert merged["days"] is None
+    said = merge_trip(FULL_TRIP, TripRequest(destination="Ella", citizenship="local"))
+    assert said["citizenship"] == "local"
+
+
+def test_a_single_citizenship_replaces_an_earlier_party_list():
+    listed = {**FULL_TRIP, "party": [{"nationality": "Indian", "count": 2}]}
+    merged = merge_trip(listed, TripRequest(citizenship="local"))
+    assert merged["party"] == []
+    assert merged["citizenship"] == "local"
+
+
+# --- Quick replies ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field", "text", "value"),
+    [
+        ("destination", "Kandy", "Kandy"),
+        ("destination", "  nuwara   ELIYA ", "Nuwara Eliya"),
+        ("days", "3 days", 3),
+        ("days", "1 day", 1),
+        ("days", "4", 4),  # a bare number is a day count
+        ("travellers", "Just me", 1),
+        ("travellers", "4 people", 4),
+        ("travellers", "8", 8),
+        ("citizenship", "All Sri Lankan citizens", "local"),
+        ("citizenship", "All from a SAARC country", "saarc"),
+        ("citizenship", "all from other countries", "non_saarc"),
+        ("citizenship", "A mixed group", "mixed"),
+        ("children", "No, all adults", 0),
+        ("children", "0", 0),
+        ("children", "2 children", 2),
+        ("origin", "The airport (Katunayake)", "Katunayake"),
+        ("origin", "Colombo", "Colombo"),
+    ],
+)
+def test_a_quick_reply_is_read_without_the_llm(field, text, value):
+    assert ru.quick_reply_value(field, text) == value
+
+
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [
+        (None, "Kandy"),  # no question was asked
+        ("destination", "Kandy and Ella"),
+        ("days", "0"),
+        ("travellers", "0"),
+        ("days", "about a week"),
+        ("citizenship", "We're from Germany"),  # typed: the understander reads it
+        ("citizenship", "Sri Lankan / I live here"),  # residence is not citizenship
+        ("party", "2 Sri Lankans"),  # a list is always read by the understander
+        ("destination", "Colombo"),  # a start place, not a destination button
+    ],
+)
+def test_anything_else_is_not_a_quick_reply(field, text):
+    assert ru.quick_reply_value(field, text) is None
+
+
+def test_every_asked_field_but_the_party_list_has_quick_replies():
+    from ai_travel_assistant.schemas import PLAN_FIELDS
+
+    assert set(ru.QUICK_REPLIES) == set(PLAN_FIELDS) - {"party"}
+    for field, options in ru.QUICK_REPLIES.items():
+        for label, value in options:
+            assert ru.quick_reply_value(field, label) == value
 
 
 # --- The router -----------------------------------------------------------------
@@ -137,25 +275,39 @@ def test_route_after_understanding(state, route):
 # --- Questions and prompt notes -------------------------------------------------
 
 
-def test_question_asks_only_for_what_is_missing():
+def test_question_asks_for_the_first_missing_field_only():
     assert clarification_question(["destination", "days"], {}) == (
-        "Where in Sri Lanka would you like to go, and for how many days?"
+        "Where in Sri Lanka would you like to go?"
     )
     assert clarification_question(["destination"], {"days": 3}) == (
         "Where in Sri Lanka would you like to spend your 3 days?"
     )
-    assert clarification_question(["days"], {"destination": "Galle"}) == (
+    assert clarification_question(["days", "origin"], {"destination": "Galle"}) == (
         "How many days would you like to spend in Galle?"
+    )
+    assert clarification_question(["travellers"], FULL_TRIP).startswith(
+        "How many people are travelling, including you?"
+    )
+    citizenship = clarification_question(["citizenship", "origin"], FULL_TRIP)
+    assert "Sri Lankan, SAARC and other foreign" in citizenship
+    assert "citizenship counts, not where you live" in citizenship
+    assert "e.g. '2 Sri Lankan adults" in clarification_question(["party"], FULL_TRIP)
+    assert clarification_question(["children"], FULL_TRIP).startswith(
+        "How many of the 2 travellers are children?"
+    )
+    assert clarification_question(["origin"], {"destination": "Jaffna"}) == (
+        "Where will you start your trip to Jaffna from?"
     )
 
 
 def test_ask_clarification_writes_a_tagged_question_and_counts_it():
     update = ask_clarification_node(
-        {"missing_fields": ["days"], "trip_request": {"destination": "Galle"}}
+        {"missing_fields": ["days", "origin"], "trip_request": {"destination": "Galle"}}
     )
     [question] = update["messages"]
     assert question.name == ru.CLARIFICATION_NAME
     assert update["clarification_rounds"] == 1
+    assert update["clarification_field"] == "days"
 
 
 def test_trip_prompt_note():
@@ -164,6 +316,35 @@ def test_trip_prompt_note():
     assert "destination=Galle, days=2" in note
     assert "budget" not in note
     assert "assume 3 days" in trip_prompt_note({"destination": "Galle"}, ["days"])
+
+
+def test_the_prompt_note_names_each_category_and_asks_for_group_totals():
+    mixed = {
+        **FULL_TRIP,
+        "party": [
+            {"nationality": "Sri Lankan", "age_group": "adult", "count": 2},
+            {"nationality": "Indian", "age_group": "adult", "count": 1},
+            {"nationality": "German", "age_group": "adult", "count": 1},
+        ],
+    }
+    note = trip_prompt_note(mixed, [])
+    assert "2 Sri Lankan adults, 1 SAARC adult, 1 non-SAARC foreign adult" in note
+    assert "never one category's price for another" in note
+    assert "per person and for the whole group" in note
+    assert "LKR and USD" in note and "give no visa details" in note
+    assert "party=" not in note  # the raw list is never shown
+
+
+def test_an_all_local_group_gets_lkr_only():
+    note = trip_prompt_note({**FULL_TRIP, "citizenship": "local"}, [])
+    assert "LKR only" in note
+    assert "do not call convert_currency" in note
+    assert "Skip visa advice" in note
+
+
+def test_an_unknown_group_is_stated_as_an_assumption():
+    note = trip_prompt_note({"destination": "Galle"}, ["citizenship"])
+    assert "Sri Lankan, SAARC and other foreign visitors may pay different" in note
 
 
 def test_agent_answered_before_ignores_our_own_replies():
@@ -189,7 +370,13 @@ def test_understand_records_intent_trip_and_missing_fields():
     )
     assert update["intent"] == "plan"
     assert update["trip_request"]["destination"] == "Galle"
-    assert update["missing_fields"] == ["days"]
+    assert update["missing_fields"] == [
+        "days",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels",
+    ]
     assert update["clarification_rounds"] == 0
 
 
@@ -232,7 +419,12 @@ def test_a_reply_is_read_with_its_question_and_known_details():
     ]
     assert update["intent"] == "plan"  # a reply to our question is planning
     assert update["trip_request"]["days"] == 3
-    assert update["missing_fields"] == []
+    assert update["missing_fields"] == [
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels",
+    ]
     assert update["clarification_context"] is None
     assert update["clarification_rounds"] == 1
 
@@ -262,7 +454,14 @@ def test_modify_without_any_plan_is_a_new_plan():
         {"messages": [HumanMessage("Make it longer")]}
     )
     assert update["intent"] == "plan"
-    assert update["missing_fields"] == ["destination", "days"]
+    assert update["missing_fields"] == [
+        "destination",
+        "days",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels",
+    ]
 
 
 def test_modify_after_a_plan_tells_the_understander_and_skips_clarifying():
@@ -353,3 +552,123 @@ def test_llm_understander_rejects_a_missing_reply():
     model = StructuredFake(messages=iter([]), result=None, seen=[])
     with pytest.raises(ValueError):
         ru.make_llm_request_understander(model)("Plan me a trip")
+
+
+# --- Quick replies and the group in the node -----------------------------------
+
+
+def asked(field: str, reply: str, trip: dict, **state) -> dict:
+    return {
+        "messages": [
+            HumanMessage("Plan me a trip"),
+            AIMessage("The question", name=ru.CLARIFICATION_NAME),
+            HumanMessage(reply),
+        ],
+        "clarification_context": "The question",
+        "clarification_field": field,
+        "clarification_rounds": 1,
+        "trip_request": trip,
+        **state,
+    }
+
+
+def test_a_clicked_quick_reply_makes_no_understander_call():
+    understander = FakeUnderstander({})
+    update = make_understand_request_node(understander)(
+        asked(
+            "citizenship",
+            "All from a SAARC country",
+            {"destination": "Galle", "travellers": 3},
+        )
+    )
+    assert understander.calls == []
+    assert update["intent"] == "plan"
+    assert update["trip_request"]["citizenship"] == "saarc"
+    assert update["trip_request"]["destination"] == "Galle"
+    assert update["missing_fields"] == ["days", "children", "origin", "wants_hotels"]
+    assert update["clarification_field"] is None
+    assert update["clarification_rounds"] == 1
+
+
+def test_a_typed_mixed_group_goes_to_the_understander():
+    party = [
+        PartyMember(nationality="Sri Lankan", count=2),
+        PartyMember(nationality="German", age_group="child"),
+    ]
+    understander = FakeUnderstander(
+        {"2 Sri Lankans and a German kid": understood("plan", party=party)}
+    )
+    update = make_understand_request_node(understander)(
+        asked(
+            "party",
+            "2 Sri Lankans and a German kid",
+            {**FULL_TRIP, "citizenship": "mixed", "children": None},
+        )
+    )
+    assert [text for text, _ in understander.calls] == [
+        "2 Sri Lankans and a German kid"
+    ]
+    trip = update["trip_request"]
+    assert (trip["travellers"], trip["children"]) == (3, 1)  # from the list
+    assert update["missing_fields"] == []
+
+
+def test_more_children_than_travellers_is_not_taken_as_a_click():
+    understander = FakeUnderstander({"3": understood("question")})
+    make_understand_request_node(understander)(
+        asked("children", "3", {**FULL_TRIP, "children": None})
+    )
+    assert len(understander.calls) == 1  # 3 of 2 travellers: read it properly
+
+
+def test_a_button_label_on_a_fresh_message_is_not_a_quick_reply():
+    understander = FakeUnderstander({"Kandy": understood("question")})
+    update = make_understand_request_node(understander)(
+        {"messages": [HumanMessage("Kandy")], "clarification_field": "destination"}
+    )
+    assert len(understander.calls) == 1  # no question pending: read it properly
+    assert update["intent"] == "question"
+
+
+# --- The ticket category is decided by code, not the LLM ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("said", "category"),
+    [
+        ({"nationality": "Maldivian"}, "saarc"),  # the live bug: LLM said non_saarc
+        ({"nationality": "Maldivian", "citizenship": "non_saarc"}, "saarc"),
+        ({"nationality": "Sri Lankan"}, "local"),
+        ({"nationality": "German"}, "non_saarc"),
+        ({"citizenship": "local"}, None),  # a category with no nationality: ask
+        ({"nationality": "tourist"}, None),  # unclear: ask
+        ({"citizenship": "mixed"}, "mixed"),
+        # "mixed" that contradicts the rest is dropped (seen live).
+        ({"citizenship": "mixed", "nationality": "Sri Lankan"}, "local"),
+        ({"citizenship": "mixed", "travellers": 1}, None),
+        (
+            {
+                "citizenship": "mixed",
+                "party": [PartyMember(nationality="Sri Lankan")],
+            },
+            None,  # the party list itself decides
+        ),
+    ],
+)
+def test_the_code_maps_a_nationality_to_its_ticket_category(said, category):
+    trip = ru.code_decides_citizenship(TripRequest(**said))
+    assert trip.citizenship == category
+
+
+def test_a_typed_nationality_reaches_the_trip_as_its_category():
+    understander = FakeUnderstander(
+        {
+            "just me, I'm Maldivian": understood(
+                "plan", travellers=1, nationality="Maldivian", citizenship="non_saarc"
+            )
+        }
+    )
+    update = make_understand_request_node(understander)(
+        asked("citizenship", "just me, I'm Maldivian", {"destination": "Galle"})
+    )
+    assert update["trip_request"]["citizenship"] == "saarc"

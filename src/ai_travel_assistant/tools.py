@@ -46,15 +46,20 @@ print(convert_currency.invoke({'amount': 100, 'from_currency': 'USD', \
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import Annotated
 
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from ai_travel_assistant import (
     attractions_service,
     currency_service,
     guide_service,
+    hotel_service,
+    pricing_service,
     travel_service,
     weather_service,
 )
@@ -71,7 +76,21 @@ from ai_travel_assistant.guide_service import (
     GuideServiceError,
     Topic,
 )
+from ai_travel_assistant.party import describe_group, group_breakdown
 from ai_travel_assistant.travel_service import TravelEstimate, TravelServiceError
+from ai_travel_assistant.trip_costs import (
+    CATEGORY_LABELS,
+    ZERO,
+    EntranceSummary,
+    attraction_cost,
+    category_text,
+    entrance_conditions,
+    extra_text,
+    format_money,
+    group_line_text,
+    source_lines,
+    summarise,
+)
 from ai_travel_assistant.weather_service import WeatherReport, WeatherServiceError
 
 # --- The offline dataset ------------------------------------------------------
@@ -449,8 +468,9 @@ def find_attractions(
     (e.g. waterfall, viewpoint, temple, museum) and straight-line distance in
     km, or a message explaining why none could be found. If OpenStreetMap
     cannot be reached, it returns the sights named in the place's Wikivoyage
-    guide instead (without distances) and says so. It does NOT cover hotels,
-    restaurants, shops or hiking routes.
+    guide instead (without distances) and says so. It does NOT cover hotels
+    (use get_destination_guide with topic "accommodation"), restaurants, shops
+    or hiking routes.
 
     Args:
         destination: Only the place name, e.g. "Ella" or "Kandy".
@@ -527,6 +547,7 @@ TOPIC_LABELS = {
     "getting_there": "getting there",
     "getting_around": "getting around",
     "see_and_do": "see and do",
+    "accommodation": "accommodation",
     "safety": "safety and health",
 }
 
@@ -577,6 +598,7 @@ def get_destination_guide(destination: str, topic: Topic = "all") -> str:
             "getting_there" - how to reach it (train, bus, air);
             "getting_around" - local transport;
             "see_and_do" - sights and activities;
+            "accommodation" - where to stay (guesthouses, hotels, price ranges);
             "safety" - safety and health tips;
             "all" - a shorter excerpt of every topic above (default).
     """
@@ -714,3 +736,247 @@ def convert_currency(amount: float, from_currency: str, to_currency: str) -> str
             "do not use a remembered exchange rate."
         )
     return format_conversion(conversion)
+
+
+# --- Ticket prices (pricing_service.py, trip_costs.py) --------------------------------
+
+
+def format_attraction_prices(
+    summary: EntranceSummary,
+    group_text: str,
+    problems: Sequence[str],
+    lkr_per_usd: float | None,
+    rate_note: str,
+) -> str:
+    """The text the LLM reads: every category, the group's lines, the totals."""
+    lines = ["Ticket prices by visitor category (from official sources only):"]
+    for cost in summary.attractions:
+        lines.append("")
+        if not cost.found:
+            lines.append(
+                f"{cost.query}: no price found in any official source. "
+                "Requires confirmation; do not state a price for it."
+            )
+            continue
+        lines.append(f"{cost.name}:")
+        for price in cost.categories:
+            label = CATEGORY_LABELS[(price.nationality, price.age_group)]
+            lines.append(f"- {label}: {category_text(price, lkr_per_usd)}")
+        lines.extend(source_lines(cost.records))
+        conditions = entrance_conditions(cost.records)
+        if conditions:
+            lines.append(f"Conditions: {conditions}")
+        if cost.group:
+            lines.append("For this group:")
+            lines.extend(f"- {group_line_text(g)}" for g in cost.group)
+            lines.append(
+                f"Verified entrance subtotal: {format_money(cost.verified_total)}"
+            )
+        lines.extend(extra_text(extra, lkr_per_usd) for extra in cost.extras)
+
+    lines.append("")
+    if group_text:
+        lines.append(f"Group: {group_text}.")
+        lines.append(
+            f"Verified entrance fees for the group: {format_money(summary.verified)}"
+        )
+        if summary.estimated != ZERO:
+            lines.append(
+                f"Estimated (not verified) on top: {format_money(summary.estimated)}"
+            )
+        if summary.unverified:
+            lines.append(
+                "Not verified, could change the budget: "
+                + "; ".join(summary.unverified)
+            )
+    else:
+        lines.append(
+            "Who is travelling is not known yet, so no group total was worked out."
+        )
+    if summary.not_found:
+        lines.append("Requires confirmation: " + ", ".join(summary.not_found))
+    if rate_note:
+        lines.append(rate_note)
+    lines.extend(problems)
+    lines.append(
+        "Use these figures exactly. Never fill in a 'Not verified' price, never "
+        "use one category's price for another, and label every estimate as an "
+        "estimate. In an itinerary, entrance fees are added from these results "
+        "automatically: do not put them in costs."
+    )
+    return "\n".join(lines)
+
+
+def _lkr_per_usd() -> tuple[float | None, str]:
+    """Today's rate for amounts the source gives in one currency only."""
+    try:
+        conversion = currency_service.convert(1, "USD", "LKR")
+    except CurrencyServiceError:
+        return None, "Exchange rate unavailable: the other currency is left out."
+    return conversion.rate, (
+        f"Other-currency amounts use 1 USD = {conversion.rate:,.2f} LKR "
+        "(indicative mid-market rate); a source's own LKR figure is used as given."
+    )
+
+
+@tool(response_format="content_and_artifact")
+def get_attraction_prices(
+    attractions: list[str],
+    state: Annotated[dict, InjectedState],
+) -> tuple[str, dict]:
+    """Look up official entrance fees for attractions, for every visitor category.
+
+    Use this for any ticket or entrance price, and when planning a visit that
+    includes paid sights (heritage sites, museums, national parks, gardens).
+    Pass the attraction names, e.g. ["Sigiriya", "Polonnaruwa"]. Prices come
+    only from official sources (such as the Central Cultural Fund) with their
+    source link and date, separately for Sri Lankan, SAARC and other foreign
+    adults and children. The group's own costs are worked out from the trip
+    details, so do not pass head counts. A price that is not published for a
+    category is reported as not verified: never replace it with a guess, a
+    remembered price or another category's price.
+
+    Args:
+        attractions: Attraction names, at most eight.
+    """
+    # The artifact is never shown to the LLM. It keeps the raw records, so
+    # the itinerary can recompute the group's fees without another lookup.
+    trip = (state or {}).get("trip_request") or {}
+    group = group_breakdown(trip)
+    try:
+        book = pricing_service.load_price_book()
+    except pricing_service.CuratedPriceError as exc:
+        text = f"Ticket prices unavailable: the curated price file is invalid ({exc})."
+        return text, {}
+    names = list(dict.fromkeys(a.strip() for a in attractions if a.strip()))[:8]
+    if not names:
+        return "No attraction names were given.", {}
+    lkr_per_usd, rate_note = _lkr_per_usd()
+    today = date.today()
+    found = [book.lookup(name) for name in names]
+    costs = [
+        attraction_cost(f, group, today=today, lkr_per_usd=lkr_per_usd) for f in found
+    ]
+    summary = summarise(costs, int(trip.get("travellers") or 0))
+    text = format_attraction_prices(
+        summary, describe_group(trip), book.problems, lkr_per_usd, rate_note
+    )
+    artifact = {
+        "checked_on": today.isoformat(),
+        "lkr_per_usd": lkr_per_usd,
+        "rate_note": rate_note,
+        "problems": list(book.problems),
+        "attractions": [
+            {
+                "query": f.query,
+                "attraction_id": f.attraction_id,
+                "name": f.attraction_name,
+                "records": [r.to_json() for r in f.records],
+            }
+            for f in found
+        ],
+    }
+    return text, artifact
+
+
+# --- Places to stay (hotel_service.py) ---------------------------------------------
+
+HOTEL_DISCLAIMER = (
+    "These come from Wikivoyage (community-written) and prices may be out of "
+    "date. This app cannot book rooms or check availability: tell the "
+    "traveller to contact the hotel. Name only these places; never add others."
+)
+
+
+def listing_line(listing: hotel_service.Listing, today: date) -> str:
+    """'Hill Top Guest House (Mid-range): Rs 5,500 with breakfast (listed 2023)'."""
+    level = hotel_service.TIER_LABELS[listing.tier]
+    price = listing.price_text or "price not listed"
+    if listing.listed_year is None:
+        when = "date of listing unknown"
+    elif listing.is_recent(today):
+        when = f"listed {listing.listed_year}"
+    else:
+        when = f"listed {listing.listed_year}, may have changed"
+    line = f"{listing.name} ({level}): {price} ({when})"
+    return line + (f", {listing.url}" if listing.url else "")
+
+
+def _room_budget_lkr(trip: dict, lkr_per_usd: float | None) -> float | None:
+    amount = trip.get("room_budget")
+    if not amount:
+        return None
+    if trip.get("room_budget_currency") == "USD":
+        return amount * lkr_per_usd if lkr_per_usd else None
+    return float(amount)
+
+
+@tool(response_format="content_and_artifact")
+def suggest_hotels(
+    destination: str,
+    state: Annotated[dict, InjectedState],
+) -> tuple[str, dict]:
+    """Suggest places to stay at a destination, for the traveller's budget.
+
+    Use this when the traveller wants hotel suggestions or asks where to stay
+    at a named place. Pass just the place name, e.g. "Kandy". The budget level
+    or nightly amount comes from the trip details, so do not pass it. Returns
+    hotels and guest houses from the travel guide with their listed prices and
+    the year each was listed. It cannot book rooms or check availability.
+
+    Args:
+        destination: The place to stay at, e.g. "Ella".
+    """
+    trip = (state or {}).get("trip_request") or {}
+    try:
+        stays = hotel_service.fetch_stays(destination)
+    except GuideServiceError as exc:
+        return (
+            f"Hotel suggestions unavailable for '{destination}': {exc} "
+            "Tell the traveller; do not name hotels from memory.",
+            {},
+        )
+    today = date.today()
+    lkr_per_usd, rate_note = _lkr_per_usd()
+    tier = hotel_service.BUDGET_TO_TIER.get(trip.get("budget") or "")
+    max_lkr = _room_budget_lkr(trip, lkr_per_usd)
+    choice = hotel_service.choose(
+        stays.listings, tier=tier, max_lkr=max_lkr, lkr_per_usd=lkr_per_usd
+    )
+    wanted = []
+    if tier:
+        wanted.append(f"{hotel_service.TIER_LABELS[tier].lower()} places")
+    if max_lkr:
+        wanted.append(f"up to LKR {max_lkr:,.0f} a room a night")
+    heading = f"Places to stay in {stays.title}" + (
+        f" ({', '.join(wanted)})" if wanted else ""
+    )
+    lines = [f"{heading}, from {stays.article_url}:"]
+    if choice.note:
+        lines.append(choice.note)
+    if not stays.listings:
+        lines.append("The guide lists no places to stay here.")
+    elif not choice.fits:
+        lines.append("None of the listed places has a readable price that fits.")
+    lines.extend(f"- {listing_line(x, today)}" for x in choice.fits)
+    if choice.unpriced:
+        lines.append(
+            "Price not listed (cannot be checked against the budget): "
+            + ", ".join(x.name for x in choice.unpriced)
+        )
+    if max_lkr and rate_note:
+        lines.append(rate_note)
+    lines.append(HOTEL_DISCLAIMER)
+    artifact = {
+        "destination": stays.destination,
+        "title": stays.title,
+        "article_url": stays.article_url,
+        "level": tier,
+        "max_lkr": max_lkr,
+        "lkr_per_usd": lkr_per_usd,
+        "checked_on": today.isoformat(),
+        "note": choice.note,
+        "listings": [x.to_json() for x in choice.fits],
+        "unpriced": [x.to_json() for x in choice.unpriced],
+    }
+    return "\n".join(lines), artifact

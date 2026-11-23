@@ -208,14 +208,23 @@ _CONVERSION = re.compile(
     re.M,
 )
 _NUMBER = r"(\d[\d,]*(?:\.\d+)?)"
+# Accommodation prices are usually ranges ("Rs 3,000-5,000", "US$20–$40",
+# "2,000 - 4,000 rupees"): both ends count as quoted prices.
+_DASH = r"\s*(?:-|–)\s*"  # hyphen or en dash
+_LKR_SIGN = r"(?:\bLKR|\bRs\.?|\brupees?)"
+_USD_SIGN = r"(?:\bUSD|US\$|\$)"
 _PRICE_PATTERNS = {
     "LKR": (
-        re.compile(rf"(?:\bLKR|\bRs\.?|\brupees?)\s*{_NUMBER}", re.I),
-        re.compile(rf"{_NUMBER}\s*(?:LKR|rupees?|Rs)\b", re.I),
+        re.compile(
+            rf"{_LKR_SIGN}\s*{_NUMBER}(?:{_DASH}(?:{_LKR_SIGN}\s*)?{_NUMBER})?", re.I
+        ),
+        re.compile(rf"(?:{_NUMBER}{_DASH})?{_NUMBER}\s*(?:LKR|rupees?|Rs)\b", re.I),
     ),
     "USD": (
-        re.compile(rf"(?:\bUSD|US\$|\$)\s*{_NUMBER}", re.I),
-        re.compile(rf"{_NUMBER}\s*(?:USD|US dollars?)\b", re.I),
+        re.compile(
+            rf"{_USD_SIGN}\s*{_NUMBER}(?:{_DASH}(?:{_USD_SIGN}\s*)?{_NUMBER})?", re.I
+        ),
+        re.compile(rf"(?:{_NUMBER}{_DASH})?{_NUMBER}\s*(?:USD|US dollars?)\b", re.I),
     ),
 }
 
@@ -346,9 +355,11 @@ def sources_for(destination: str, evidence: Iterable[Evidence]) -> DestinationSo
     found.weather_text = "\n".join(weather)
     for currency, patterns in _PRICE_PATTERNS.items():
         amounts = {
-            _number(m.group(1))
+            _number(number)
             for pattern in patterns
             for m in pattern.finditer(found.wikivoyage_text)
+            for number in m.groups()
+            if number is not None
         }
         found.guide_prices[currency] = sorted(amounts)
     return found

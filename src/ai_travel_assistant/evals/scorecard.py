@@ -8,7 +8,7 @@ What this file demonstrates:
   2. Targets next to results. Each metric shows its §7.3 target and whether
      it was met; metrics without a target are tracked, not judged.
   3. Scoring is free and repeatable. The scorecard reads saved records, so it
-     can be rebuilt any time, e.g. after fixing a scorer, at no Gemini cost.
+     can be rebuilt any time, e.g. after fixing a scorer, at no LLM cost.
      Only --judge spends calls (one per plan).
   4. An honest denominator. Scenarios with no record yet are listed as
      missing; the scorecard never pretends a partial run is complete.
@@ -218,7 +218,7 @@ def render_markdown(card: Scorecard) -> str:
         f"**Scenarios scored:** {scored}"
         + (f" ({len(card.missing)} still missing)" if card.missing else " (complete)")
         + "  ",
-        f"**Gemini calls in the run:** {card.total_calls}",
+        f"**LLM calls in the run:** {card.total_calls}",
         "",
         "| Metric | Result | Counted | Target | Met |",
         "|---|---|---|---|---|",
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None, root: Path = DEFAULT_RUNS_DIR) -> int:
     parser.add_argument(
         "--judge",
         action="store_true",
-        help="also ask the LLM judge about each plan (one Gemini call per plan)",
+        help="also ask the LLM judge about each plan (one LLM call per plan)",
     )
     parser.add_argument(
         "--no-save",

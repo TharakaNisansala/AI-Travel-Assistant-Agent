@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "und-no-destination",
+  "category": "understanding",
+  "started_at": "2026-11-23T06:27:42.748442Z",
+  "model": "openai/gpt-oss-120b",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Can you plan 2 days of temples and history for us?",
+      "route": "clarify",
+      "intent": "plan",
+      "trip_request": {
+        "destination": null,
+        "days": 2,
+        "interests": [
+          "temples",
+          "history"
+        ],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": null,
+        "children": null,
+        "pace": null,
+        "nationality": null,
+        "citizenship": null,
+        "party": [],
+        "origin": null,
+        "wants_hotels": null,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [
+        "destination",
+        "travellers",
+        "citizenship",
+        "origin",
+        "wants_hotels"
+      ],
+      "question": "Where in Sri Lanka would you like to spend your 2 days?",
+      "itinerary": null,
+      "message_count": 2,
+      "llm_calls": 1,
+      "seconds": 1.125
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Can you plan 2 days of temples and history for us?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "315c1256-d7aa-404a-8a62-cb9aac8feb63"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "Where in Sri Lanka would you like to spend your 2 days?",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "clarification",
+        "id": "2b5579d2-5e54-4126-90b8-9eda1198c9b0",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

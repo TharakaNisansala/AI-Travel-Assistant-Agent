@@ -1,0 +1,634 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "fault-weather-ella",
+  "category": "fault",
+  "started_at": "2026-11-23T08:40:53.977708Z",
+  "model": "gemini-3.5-flash",
+  "faults": "weather",
+  "turns": [
+    {
+      "text": "Plan 2 days in Ella just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel.",
+      "route": "agent",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Ella",
+        "days": 2,
+        "interests": [],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": 1,
+        "children": 0,
+        "pace": null,
+        "nationality": "Sri Lankan",
+        "citizenship": "local",
+        "party": [],
+        "origin": "Colombo",
+        "wants_hotels": false,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [],
+      "question": null,
+      "itinerary": {
+        "destination": "Ella",
+        "days": 2,
+        "start_from": "Colombo",
+        "start_assumed": false,
+        "summary": "A 2-day itinerary in Ella for a solo Sri Lankan traveler starting from Colombo. Highlights include hiking Little Adam's Peak, visiting Nine Arch Bridge, and taking an organic tea tour.",
+        "day_plans": [
+          {
+            "day": 1,
+            "theme": "Arrival from Colombo & Hike to Little Adam's Peak",
+            "forecast_date": null,
+            "travel": [
+              {
+                "from_place": "Colombo",
+                "to_place": "Ella",
+                "road_distance_km": 203.0,
+                "driving_minutes": 222.0
+              }
+            ],
+            "activities": [
+              {
+                "time_of_day": "afternoon",
+                "name": "Little Adam's Peak",
+                "description": "A relatively easy walk east of town through tea plantations leading to scenic viewpoints overlooking Ella Rock and Ravana Falls.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": null
+          },
+          {
+            "day": 2,
+            "theme": "Nine Arch Bridge & Tea Estate Experience",
+            "forecast_date": null,
+            "travel": [],
+            "activities": [
+              {
+                "time_of_day": "morning",
+                "name": "Nine Arch Bridge",
+                "description": "Walk along Passara Road or rail tracks to view the famous multi-arched railway bridge in its lush valley.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              },
+              {
+                "time_of_day": "afternoon",
+                "name": "Ella Organic Tea Garden",
+                "description": "Guided tour of Sri Lanka's organic tea production process, spice introduction, and tea tasting session.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": null
+          }
+        ],
+        "costs": [
+          {
+            "item": "Ella Organic Tea Garden tour and tasting",
+            "per": "person",
+            "quantity": 1,
+            "quantity_note": "1 person tour fee as quoted in the Wikivoyage guide",
+            "quoted_currency": "LKR",
+            "amount_lkr": 3000.0,
+            "amount_usd": null
+          }
+        ],
+        "facts": [
+          {
+            "text": "The road trip from Colombo to Ella covers 203 km and takes about 3 hours 42 minutes by car without traffic.",
+            "quote": "Road distance: 203 km (straight line 132 km). Driving time: about 3 h 42 min by car without traffic or stops.",
+            "source": "OSRM"
+          },
+          {
+            "text": "Due to railway damage, trains from Ella currently operate only as far as Nanu Oya and do not run directly to Colombo.",
+            "quote": "Cyclone Ditwah In November/December 2025, Cyclone Ditwah damaged 70% of the Sri Lankan railway network. Repair work is ongoing (as of February 2026), but several lines are still out of service: Trains from Badulla and Ella travel as far as Nanu Oya (close to Nuwara Eliya) but don't continue to Kandy or Colombo.",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "Leeches are present on countryside paths after rain; carrying hand sanitizer or Dettol helps detach them easily.",
+            "quote": "There are lots of leeches that hang on to the vegetation by the side of tracks waiting for a nice juicy mammal to walk by. Take some Dettol or hand sanitizer with you and spray it on the offending leech, which will drop off.",
+            "source": "Wikivoyage"
+          }
+        ],
+        "tips": [
+          "Visit Nine Arch Bridge early in the morning for cooler weather and fewer crowds.",
+          "Wear closed shoes and long socks when walking on tea plantation trails to prevent leech bites.",
+          "Scooter rentals and local tuk-tuks are convenient options for getting around Ella town."
+        ],
+        "assumptions": [
+          "Travel between Colombo and Ella is by car or driver.",
+          "Accommodation is already arranged by the traveller."
+        ],
+        "not_available": [
+          "Live weather forecast from Open-Meteo was unavailable due to a network connection error.",
+          "OpenStreetMap attraction data and straight-line distances were unavailable (sights retrieved from Wikivoyage guide).",
+          "Verified official entrance fees for Little Adam's Peak and Nine Arch Bridge (not listed in official fee database).",
+          "Room availability and food prices.",
+          "Driving times between local attractions within Ella.",
+          "Weather forecast (the weather service was unavailable)",
+          "USD value of Ella Organic Tea Garden tour and tasting (no conversion retrieved)",
+          "Nearby sights from OpenStreetMap (the service failed)"
+        ],
+        "warnings": [],
+        "entrance_fees": [
+          {
+            "query": "Little Adam's Peak",
+            "name": null,
+            "categories": [],
+            "group": [],
+            "sources": [],
+            "conditions": "",
+            "extras": [],
+            "verified_lkr": 0.0,
+            "verified_usd": 0.0
+          },
+          {
+            "query": "Nine Arch Bridge",
+            "name": null,
+            "categories": [],
+            "group": [],
+            "sources": [],
+            "conditions": "",
+            "extras": [],
+            "verified_lkr": 0.0,
+            "verified_usd": 0.0
+          },
+          {
+            "query": "Ella Organic Tea Garden",
+            "name": null,
+            "categories": [],
+            "group": [],
+            "sources": [],
+            "conditions": "",
+            "extras": [],
+            "verified_lkr": 0.0,
+            "verified_usd": 0.0
+          }
+        ],
+        "cost_lines": [
+          {
+            "item": "Ella Organic Tea Garden tour and tasting",
+            "per": "person",
+            "quantity": 1,
+            "quantity_note": "1 person tour fee as quoted in the Wikivoyage guide",
+            "each_lkr": 3000.0,
+            "each_usd": null,
+            "group_lkr": 3000.0,
+            "group_usd": null,
+            "per_person_lkr": 3000.0,
+            "per_person_usd": null
+          }
+        ],
+        "stays": null,
+        "budget": {
+          "group": "1 Sri Lankan adult",
+          "travellers": 1,
+          "entrance_verified_lkr": 0.0,
+          "entrance_verified_usd": 0.0,
+          "entrance_estimated_lkr": 0.0,
+          "entrance_estimated_usd": 0.0,
+          "other_estimated_lkr": 3000.0,
+          "other_estimated_usd": null,
+          "accommodation_lkr": null,
+          "accommodation_usd": null,
+          "accommodation_note": "",
+          "total_lkr": 3000.0,
+          "total_usd": null,
+          "per_person_lkr": 3000.0,
+          "per_person_usd": null,
+          "not_verified": [],
+          "requires_confirmation": [
+            "Little Adam's Peak",
+            "Nine Arch Bridge",
+            "Ella Organic Tea Garden"
+          ],
+          "not_included": [
+            "Accommodation (you said you have your own)",
+            "Food and drinks",
+            "Transport fares (buses, trains, tuk-tuks, a driver)",
+            "Guides, tips and personal spending"
+          ],
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given."
+        }
+      },
+      "message_count": 11,
+      "llm_calls": 4,
+      "seconds": 126.015
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan 2 days in Ella just for me; I'm a Sri Lankan citizen starting from Colombo. We already have a hotel.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "bcf136c3-9bef-43ff-90b9-f5f7ab7b251b"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "estimate_travel_time",
+            "arguments": "{\"destination\": \"Ella\", \"origin\": \"Colombo\"}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_10927493364588775692": "ErcSCrQSAWkUfRNljF/z0CScxyR/vr0a5JXgg6qxzLG+pZE99aDW9jhjeNeOEHyojhKusdScAeJoJTBYfzeM01jEBsLp4GF4IGMoXsn6vgUPlL66KxJTbgLtOaWEz/vvr6/4eHaoarfiyH/ND5//lxrlXr3A3NKnY3rntZ7RrPS+IYmxipEjTsHx4C7wblZmHaZmliQyJskG2jmT+F6o2OPdwEvH+xvydK8/gqc/6kz/6qjRqxzOdqcUYEuc4bLVzmNSiOPyPO8Xxh+Tv24DBwcEnJVQCB0vhVyaL+fZQaVpJzo4yvNT1rtyTO821nXGBjOqAnwzTwvAfvixDH0GZvzO+P8rHnaZd3lXdFJfU0TkDcqCyHOOAqaog2pmYjclf/17GmhzU3TPbduTkUF9ZyEzv9VJTxJon8IdkNmXwv/OfjBnbq9ZZvgbqH+miN9qBobSwHeP59ZQPlJgpkzYPxR37wyLwLn4NdSsJlE4kvgFdrbzDw/EH7JsjwAPY9rPQIh77J7YeXm59i9GUMUUrq/JQwTSE0NDienFenCSryxXNyINMjhcFznEjgyuA3mU32IA3xx7TZ027HKNQZlMANAESvrXMYvJ/805FEwDdeRjbsevqpDQFSQNM0QVVdpa+LUjo70WUfyHW5ZQPbTByLstLw3dUnzEIDTpNzoXAVlM3wjA+RBwgiNWvH4Q0Clr/oANLBIh8LhOBdyqFgddGSu/WpgSdLC0yJU+shHhVTKq2Gy1KHCZEiI7uae1aFMMUxtcdxZbxXY+BXr90YDH8z54RbfgPoNIGk6/j9MwQh9CERshvYCvrdUkZYf+MH9m9i+VzmcipIQMJnsX2Bqtc0IiZ3aiHLgbtBQpP+0Fv8PK2oNbWy5Hz9AFXlGl5lBzaedafNX9jQXXhfRzi9QkhJxLy5S35DS30bpBjaROdURX5zBZpJkOTLacw8EuUrRRpXyT4EVTCh9P8+2/W9RcvSr7onAAwWLIi/JfJESQTBgy5X2FKiNbdxnWxZd3atN7Ko5EW6jhJNZdVqHEaLFdIv3L0n5EBbvF493bzszRzVz6gG3MS7UXBjg+94+I7DkpT5xhj2ztdtF7UK1oTXWR9FTQOjeCBHkHS2gLFdrlc2H4zwAFUciPMw5msAIQTkLnbvITDxzvkbIBFgKda5XVeDiPZk/EA1mafIh0KkQuf4kyPx7UrjY4DLCssQLbQIJHqPSvhNG0kCRN2mh05MWcCWTKZhZ8/h/LCP6hAYT0ZJJ4ucEIImiaqsyQ4da2deCVpnffNWubtl3t/tqnn38Y5UUbXNQtGUv/4WaIXgaisC2E4I3OJ95yHzZzuM2XZx7pgeKOcA3ux2K27BP0tSxi+JjRwM892fQC/wgV4elABbh0f2V5ULOZvD8Ep6rG944K725qPQ7xRiktdxqIu4/1nop+E0RZN85g8J9DrYElKabwRIgcBbYCOu3wDvDmtl5+1E9K98/WLRMcNk6gOT1oa472KlUVouxEGdO5YKBYmwT/kCom62sCV92wG5e0ib5XrZu79JUQBbCtPeGzQMb2xl5QNC63PgZBSzulqH2xeoKcG/ipAUQmn+Vm5yHk7rrQMrZH2OEP/dZfAMX4nNCqx51MimwBRHAcmOWd76ObI1BUZMtRrGX0e3JVezOyCMKOunpkIlu8Ty+Ve3dpEDH1fDSWGvNk5vTo6VpLayumvJ4P22PCqkV0WtZqeDiYYWxmerqezqmONXswAk2OiHZzn97/WPkfFBe1nWODgkXH3IizDxHzOKJwIIGnT7mwCvXYpOmAcilopjXyNet0EeA7cxzIurb82XhqS6XadPW4oflfgeXr8O65tncXzMHcexBTSnRTZDT4ZF35oJDkZCoJwMYBgWzJLIWlO2sB62/fmKCf3zP5/J3njgUkFRH++kUo2eZkmSa+mz4fvkRsQeaJO7DQmpWtww045TndUweLxnCFwpoL+Ec5jLFXnte5pRhN/DGUfn5suViLC6xY/rxXakTJxtT+SJVhjCOQ9h5x6AmqvRRg4M5F1c1HVDA7p5OSdnGF/SdYBImcVcYW9WXomUxY6ihcRJ8kQUbkTmKAF77Yzajk21puzs3o96qm+4MgCIU9qAMA5aZKtFQ2R204r+KHzGMgdMWHhGLf+01LqmnapsAbk2e3IkR/bMRl6SCisBAqi9qwmy9oXv+y+F8WLCV9OU8qQjQYZAaJwzyPCezfHYy2lRJWk19rd/sZPwFYWVFkaStW+hr538MOWQnIVTtGy99/ActWP8giH0Bex2DjNCw57AhFQFQAf5csw3ZsuWd3gkiZc3lsBs+3fMYMce4aT6PudBs3rqiMQQz88ziACzrJirCdhSs0EtthMWn4QhAk2mFOIF/dCADvztWT2dMCaWduFA2/PztiFo5RCtfp6xBawBonf1W200KDb/9UhmTJiK3DKfv8ePDNaXkT5SA2NIV82U9h6EY6o9Zz02/TyR86+H02K7wrabHamBhS2phv/6QmffXbHQMXXEtPi+TGhhFb0JztHwHxICJ7dFTTRRzOgOcl86mDsx8CMHn953S0CpqHqBU67FGhnzYjg3JRTSXkrhVfANLNmMvPnLhDaGYZsSGhVYM2Sa9DxzpgiwCeiqn9Wb+zbLq8thc/iPp1LQrraJ3+hH1kZ8E8tbbQcdI3I1d9ZvmMxzl51Vkl7XxLd5kMDKKMmEAs1aiV1AnR8p17ZbiQsjaCdO1xWL05/rl7F4Pm+tNRRthrrGaWFG/Luh6506M0wNCvco8q5QVflJFDhzYhsJT1MrVevlV6Om38KvO2V1dlJfggJj28SzPxXDqeEcSDnzaSLWR51ArLoqV3p8rfT9nhBbuZK1bLhYZpeGguXN13UnyrsifnojQWtzYvThuWgt1XU6pRccAe+90MSiC9QASuDw3+7jg1zNeEmC0Z3qJPiSj3sHdImNz2KYI31vnLlLmwoSSgQLbpqZN0t6K68zIYlXYc4pvURt/vCIqw5ZId2Y23o0esT3btBrd7L7qqXyeiMfQPzvey/hmzpdPaR3g27WVKIcHmZZGGUL0L0XJg8d8vuu6HeTqatTrVrbmfHQWpo1uGTBJK0KiSHSXyAVLToLU3C92KVGqkwxTImmvA40MgTgYfvWrOAfP6PHFlPQ=="
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20790-dc89-74a2-93a5-3d370b6d5668-0",
+        "tool_calls": [
+          {
+            "name": "get_destination_guide",
+            "args": {
+              "destination": "Ella",
+              "topic": "all"
+            },
+            "id": "call_10927493364588775692",
+            "type": "tool_call"
+          },
+          {
+            "name": "find_attractions",
+            "args": {
+              "category": "all",
+              "destination": "Ella"
+            },
+            "id": "call_10927493364588775593",
+            "type": "tool_call"
+          },
+          {
+            "name": "get_weather_forecast",
+            "args": {
+              "destination": "Ella"
+            },
+            "id": "call_10927493364588775494",
+            "type": "tool_call"
+          },
+          {
+            "name": "estimate_travel_time",
+            "args": {
+              "destination": "Ella",
+              "origin": "Colombo"
+            },
+            "id": "call_10927493364588775395",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 4708,
+          "output_tokens": 656,
+          "total_tokens": 5364,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 567
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Wikivoyage guide for Ella (all topics):\n[Introduction] Ella (also spelt 'Elle') is a beautiful small town in Uva province on the southern edge of Sri Lanka's Hill Country. It is popular with tourists and makes a great base from which to explore the surrounding countryside. It's in the middle of beautiful countryside, with small vegetable plots in the valleys, tea plantations on the hill slopes and forests on the tops. ...\n[Get in] By train: Cyclone Ditwah In November/December 2025, Cyclone Ditwah damaged 70% of the Sri Lankan railway network. Repair work is ongoing (as of February 2026), but several lines are still out of service: Trains from Badulla and Ella travel as far as Nanu Oya (close to Nuwara Eliya) but don't continue to Kandy or Colombo. ...\n[Get around] There are plenty of tuk-tuks around, but the best way to get around is to rent a scooter- most guest houses do this. Online carhire services exist such as Ella Taxi Service.\n[See] 1 Little Adam's Peak. A relatively easy hike to the east of the town center. Walk along the main road for 20 minutes to reach the path, cutting across tea plantations before the final climb up. Great views on Ella Rock and Rawana Falls. You can see the Newburgh Tea Estate on the other side (north). Busy during high season. There is a zip line near the bottom of the trail, available for a fee, though it won't save you time. 2 Nine Arch Bridge. ...\n[Do] Have a Massage at one of the local massage places in town. 1 Ella Organic Tea Garden, 5 km south of Ella centre just off Kithalella road, ☏ +94 711344503. 09:00, 11:00, 13:00. Visit one of the few organic tea growers in Sri Lanka. You will get a short tour of the tea plantation, being introduced to several spices and fruits that grow there. After that, learn how the different types of tea are made and taste them all. Rs 3,000 per person. ...\n[Sleep] Anasa Wellness Resort, ☏ +94 77 246 8030, sales@anasawellnessresort.com. (updated Apr 2019) Budget: There are a number of cheap guest houses scattered around town. Green Hill, (wemalasooriya@yahoo.com) is on top of the Ella Gap overlooking green mountains with a nice view through the gap. The owners, Podi and Prasanna were very welcoming and provided authentic Sri Lankan meals including egg hoppers for breakfast. ...\n[Stay healthy] Don't walk in the countryside in shorts and sandals or flipflops, especially after it's been raining. There are lots of leeches that hang on to the vegetation by the side of tracks waiting for a nice juicy mammal to walk by. Take some Dettol or hand sanitizer with you and spray it on the offending leech, which will drop off.\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Ella\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_destination_guide",
+        "id": "351974ff-6b19-4fd3-9046-d9d94f4219b5",
+        "tool_call_id": "call_10927493364588775692",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Attractions unavailable for 'Ella': No Overpass server could complete the search. overpass-api.de: The Overpass API did not respond within 30 seconds. overpass.private.coffee: The Overpass API did not respond within 30 seconds.\nFALLBACK: sights named in the Wikivoyage guide instead (no distances, not filtered by category).\nWikivoyage guide for Ella (see and do):\n[See] 1 Little Adam's Peak. A relatively easy hike to the east of the town center. Walk along the main road for 20 minutes to reach the path, cutting across tea plantations before the final climb up. Great views on Ella Rock and Rawana Falls. You can see the Newburgh Tea Estate on the other side (north). Busy during high season. There is a zip line near the bottom of the trail, available for a fee, though it won't save you time. 2 Nine Arch Bridge. Famous beautiful rock bridge east of the town center. 45 minutes walk from the town center (Passara road, same as Little Adam's Peak and Newburgh Estate), then take a left to walk down to the bridge via a paved road and concrete stairs. Alternatively, walk along the train tracks from Ella railway station (but be careful to listen for approaching trains). If unsure, ask the locals, but not tuk tuk drivers, as they will want to take you along an expensive, circuitous route that will take you to near the bridge at track level. Can be a bit crowded with tourists, come early to enjoy the fresh air. Check the time tables to be able to see a train pass while you are there (but there will be around 4 trains passing between 10AM and 1PM). ...\n[Do] Have a Massage at one of the local massage places in town. 1 Ella Organic Tea Garden, 5 km south of Ella centre just off Kithalella road, ☏ +94 711344503. 09:00, 11:00, 13:00. Visit one of the few organic tea growers in Sri Lanka. You will get a short tour of the tea plantation, being introduced to several spices and fruits that grow there. After that, learn how the different types of tea are made and taste them all. Rs 3,000 per person. (updated Aug 2024) 2 Newburgh Green Tea Factory. A bit further down Passara Road (after Little Adam's Peak path), and 30 minutes from the town center. Quick visit of the tea factory, including green tea tasting at the end.\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Ella\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.\nMention only sights named above, say they come from Wikivoyage because OpenStreetMap could not be reached, and do not invent attractions or distances.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "find_attractions",
+        "id": "d287bc01-7e6b-4e66-a53b-796115b4b82a",
+        "tool_call_id": "call_10927493364588775593",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Weather unavailable for 'Ella': Could not connect to the Open-Meteo geocoding API (ConnectError). Check the internet connection. Tell the traveller the forecast could not be retrieved; do not guess the weather.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_weather_forecast",
+        "id": "9e972d4b-3c6d-4247-bab8-99aa82fdefd3",
+        "tool_call_id": "call_10927493364588775494",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Road trip from Colombo (Colombo District, Western Province, Sri Lanka) to Ella Town (Badulla District, Uva Province, Sri Lanka):\n- Road distance: 203 km (straight line 132 km).\n- Driving time: about 3 h 42 min by car without traffic or stops.\nThis is a free-flow car estimate: real journeys, especially on hill roads or by bus, tuk-tuk or train, usually take longer. Say so.\nSource: OSRM routing on OpenStreetMap roads (© OpenStreetMap contributors).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "estimate_travel_time",
+        "id": "edbb64c3-bec9-43cf-a312-544d43c9dadb",
+        "tool_call_id": "call_10927493364588775395",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "get_attraction_prices",
+            "arguments": "{\"attractions\": [\"Little Adam's Peak\", \"Nine Arch Bridge\", \"Ella Organic Tea Garden\", \"Newburgh Green Tea Factory\"]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_12837818776210534534": "Eq0JCqoJAWkUfRNEOfPk0fKeJtkgQoQA3y4YpH0Y18ySUJJB4tbvbszOyVRGn5kMpT/n0LAVj9X+XZ6oYaTe/XMo4PG+KjvcXSkQT6tuCJcOMqf+1epThbNPCbHGYyEZovKSFITRPQzA/C4Dju/GR6Fuo0QPnS3iutQF4FqWgzs8Wl1EOS7dN3leqnoFbsFHvdYQzVcT+q/4vPRY6OiH38mDu744gjhFNDhq0vXq3OR6xEoBy3wlv0IOes+jo06vfCdAaTX189GSyeptl6CODdubh3ZUZb8seYG+209rRK963USGoCXH87fe6gdajsPRmkv1cb+8982l6fFTYusWC6Iphltthpo4NfZ0mHPhNUcAKyKGgXABbNpINHN+kuJ+7FgNcxripqw7wuXy2kJLoMyTIMdNcQJky9qRnicxpOJGfCiGYsYEaooEyN9X6WCC+Ws8NqBsziTy63I8o6K0rSYak8LYhni+WSBe4jEOiWP06NArk+8LuxCuH92jcZg/QO/jGn4Uih6pv2CDl7xT0QuEAv54Gr2kGec0Ly7vgwL+oAQPVnT13NGvjWKunu6eE8u7WNhy+aPky22otHSNkMk3yVpzW25vkxaiRAfsWydz8gfx/kJyPOBmHF4kor7+HK6eoBHJiaA8lztgiYMuIEF1vk7RyHDJMNfTdTA2YUYoYTn52JfaSDRHhTcK9DDlLYthyoZ1FGcRuHCYu/kzUQ3fkkPpoGX9C9C4Q7oAsw2JPip4WN4gTpMg6khQXO61+CL8m1ZeBxYP8U6VSJJT5a6fd2PxIf4MWCufutz4mCTRDz6NFmXmE7wgMX8/Od5YZ/K+XB9uNZ7A1QzIZeW8JnbIwqvdWaNSgoAwEZlKrPEmWPVBuF4kJTrW+feOO1vNbBjHrdIIQbSgxFspcgPn+ZuiY+pdsmR9Lm2K2Obgk9L5ChW9Hh8RoJVvhs0uiSvoJpGJlScOdcG895dJlb9a6YtiQX2AplT6zLolw9kCnFYN3TTxu/A9sSJTKmLaq8W0js4LOtsP4yYjfH163075mqvFCudF/olgkdt3u3fkerLGo6UAAu09gFkkC680tH8LENVYcEa9P9CkyngWOFU+EAKyAzAXBnF4bq6MhB1WF52AHzyZi+mhOyp810Ez3N/ZazrsBiZl+h9LIaZpTDiXp65kLDdcrL8JXMjotGpLgv/YmeqNouyzNYx+1nLomVZq9qznB2Bfqrd6908aCKltgLZSCuglvdjIQZHskbYWioRL4aR5JcVj9qNUV48YI3ix7CJQOS2HR65pNFSBi5NudI/qrz6wjR5eZ7++aGMvDHMFHRkUAFP/74xYnw2LWQZoQ9kL7lG4nIFWWS3qKTOT7SlbHKnEck/75BHm1e604e8zdZoz/5NKGVNJ1Q20+ungFqPgGcdqaT9+l6If/JPz7UaxBwHdHGKFxI2mN1uplYiAl+s7ewb3jKKeqNYHp9oLNYzdLspF+8WIn3BRG2SOVy4L+63DbxEwN7suBOB8x8ALMcWevkJTOakec2MfDoilEnQIcoxLlxYn+fl19UL5ulNdceQjCSa0Loa6pSH+HMqquDwaZcaq2Kayljbdt2Bt"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20792-0354-76a5-8935-3d821bd497f0-0",
+        "tool_calls": [
+          {
+            "name": "get_attraction_prices",
+            "args": {
+              "attractions": [
+                "Little Adam's Peak",
+                "Nine Arch Bridge",
+                "Ella Organic Tea Garden",
+                "Newburgh Green Tea Factory"
+              ]
+            },
+            "id": "call_12837818776210534534",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 6970,
+          "output_tokens": 330,
+          "total_tokens": 7300,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 285
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Ticket prices by visitor category (from official sources only):\n\nLittle Adam's Peak: no price found in any official source. Requires confirmation; do not state a price for it.\n\nNine Arch Bridge: no price found in any official source. Requires confirmation; do not state a price for it.\n\nElla Organic Tea Garden: no price found in any official source. Requires confirmation; do not state a price for it.\n\nNewburgh Green Tea Factory: no price found in any official source. Requires confirmation; do not state a price for it.\n\nGroup: 1 Sri Lankan adult.\nVerified entrance fees for the group: LKR 0 (USD 0)\nRequires confirmation: Little Adam's Peak, Nine Arch Bridge, Ella Organic Tea Garden, Newburgh Green Tea Factory\nOther-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\nUse these figures exactly. Never fill in a 'Not verified' price, never use one category's price for another, and label every estimate as an estimate. In an itinerary, entrance fees are added from these results automatically: do not put them in costs.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_attraction_prices",
+        "id": "64c2b4d6-f65c-4bca-864d-a970fe0961d3",
+        "tool_call_id": "call_12837818776210534534",
+        "artifact": {
+          "checked_on": "2026-11-23",
+          "lkr_per_usd": 332.392719,
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.",
+          "problems": [],
+          "attractions": [
+            {
+              "query": "Little Adam's Peak",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Nine Arch Bridge",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Ella Organic Tea Garden",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Newburgh Green Tea Factory",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            }
+          ]
+        },
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "submit_itinerary",
+            "arguments": "{\"start_assumed\": false, \"day_plans\": [{\"forecast_date\": null, \"travel\": [{\"road_distance_km\": 203, \"driving_minutes\": 222, \"to_place\": \"Ella\", \"from_place\": \"Colombo\"}], \"theme\": \"Arrival from Colombo & Hike to Little Adam's Peak\", \"day\": 1, \"activities\": [{\"distance_km\": null, \"source\": \"Wikivoyage\", \"description\": \"A relatively easy walk east of town through tea plantations leading to scenic viewpoints overlooking Ella Rock and Ravana Falls.\", \"estimated_hours\": 2, \"time_of_day\": \"afternoon\", \"name\": \"Little Adam's Peak\"}]}, {\"day\": 2, \"theme\": \"Nine Arch Bridge & Tea Estate Experience\", \"activities\": [{\"distance_km\": null, \"estimated_hours\": 2, \"source\": \"Wikivoyage\", \"description\": \"Walk along Passara Road or rail tracks to view the famous multi-arched railway bridge in its lush valley.\", \"time_of_day\": \"morning\", \"name\": \"Nine Arch Bridge\"}, {\"estimated_hours\": 2, \"distance_km\": null, \"source\": \"Wikivoyage\", \"time_of_day\": \"afternoon\", \"name\": \"Ella Organic Tea Garden\", \"description\": \"Guided tour of Sri Lanka's organic tea production process, spice introduction, and tea tasting session.\"}], \"forecast_date\": null, \"travel\": []}], \"facts\": [{\"text\": \"The road trip from Colombo to Ella covers 203 km and takes about 3 hours 42 minutes by car without traffic.\", \"quote\": \"Road distance: 203 km (straight line 132 km). Driving time: about 3 h 42 min by car without traffic or stops.\", \"source\": \"OSRM\"}, {\"quote\": \"Cyclone Ditwah In November/December 2025, Cyclone Ditwah damaged 70% of the Sri Lankan railway network. Repair work is ongoing (as of February 2026), but several lines are still out of service: Trains from Badulla and Ella travel as far as Nanu Oya (close to Nuwara Eliya) but don't continue to Kandy or Colombo.\", \"source\": \"Wikivoyage\", \"text\": \"Due to railway damage, trains from Ella currently operate only as far as Nanu Oya and do not run directly to Colombo.\"}, {\"source\": \"Wikivoyage\", \"text\": \"Leeches are present on countryside paths after rain; carrying hand sanitizer or Dettol helps detach them easily.\", \"quote\": \"There are lots of leeches that hang on to the vegetation by the side of tracks waiting for a nice juicy mammal to walk by. Take some Dettol or hand sanitizer with you and spray it on the offending leech, which will drop off.\"}], \"costs\": [{\"quoted_currency\": \"LKR\", \"per\": \"person\", \"amount_lkr\": 3000, \"item\": \"Ella Organic Tea Garden tour and tasting\", \"quantity_note\": \"1 person tour fee as quoted in the Wikivoyage guide\", \"amount_usd\": null, \"quantity\": 1}], \"days\": 2, \"summary\": \"A 2-day itinerary in Ella for a solo Sri Lankan traveler starting from Colombo. Highlights include hiking Little Adam's Peak, visiting Nine Arch Bridge, and taking an organic tea tour.\", \"start_from\": \"Colombo\", \"not_available\": [\"Live weather forecast from Open-Meteo was unavailable due to a network connection error.\", \"OpenStreetMap attraction data and straight-line distances were unavailable (sights retrieved from Wikivoyage guide).\", \"Verified official entrance fees for Little Adam's Peak and Nine Arch Bridge (not listed in official fee database).\", \"Room availability and food prices.\", \"Driving times between local attractions within Ella.\"], \"assumptions\": [\"Travel between Colombo and Ella is by car or driver.\", \"Accommodation is already arranged by the traveller.\"], \"destination\": \"Ella\", \"tips\": [\"Visit Nine Arch Bridge early in the morning for cooler weather and fewer crowds.\", \"Wear closed shoes and long socks when walking on tea plantation trails to prevent leech bites.\", \"Scooter rentals and local tuk-tuks are convenient options for getting around Ella town.\"]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_1144693827414515221": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20792-2f09-7482-a684-e9a1d0a7bd8e-0",
+        "tool_calls": [
+          {
+            "name": "submit_itinerary",
+            "args": {
+              "start_assumed": false,
+              "day_plans": [
+                {
+                  "forecast_date": null,
+                  "travel": [
+                    {
+                      "road_distance_km": 203,
+                      "driving_minutes": 222,
+                      "to_place": "Ella",
+                      "from_place": "Colombo"
+                    }
+                  ],
+                  "theme": "Arrival from Colombo & Hike to Little Adam's Peak",
+                  "day": 1,
+                  "activities": [
+                    {
+                      "distance_km": null,
+                      "source": "Wikivoyage",
+                      "description": "A relatively easy walk east of town through tea plantations leading to scenic viewpoints overlooking Ella Rock and Ravana Falls.",
+                      "estimated_hours": 2,
+                      "time_of_day": "afternoon",
+                      "name": "Little Adam's Peak"
+                    }
+                  ]
+                },
+                {
+                  "day": 2,
+                  "theme": "Nine Arch Bridge & Tea Estate Experience",
+                  "activities": [
+                    {
+                      "distance_km": null,
+                      "estimated_hours": 2,
+                      "source": "Wikivoyage",
+                      "description": "Walk along Passara Road or rail tracks to view the famous multi-arched railway bridge in its lush valley.",
+                      "time_of_day": "morning",
+                      "name": "Nine Arch Bridge"
+                    },
+                    {
+                      "estimated_hours": 2,
+                      "distance_km": null,
+                      "source": "Wikivoyage",
+                      "time_of_day": "afternoon",
+                      "name": "Ella Organic Tea Garden",
+                      "description": "Guided tour of Sri Lanka's organic tea production process, spice introduction, and tea tasting session."
+                    }
+                  ],
+                  "forecast_date": null,
+                  "travel": []
+                }
+              ],
+              "facts": [
+                {
+                  "text": "The road trip from Colombo to Ella covers 203 km and takes about 3 hours 42 minutes by car without traffic.",
+                  "quote": "Road distance: 203 km (straight line 132 km). Driving time: about 3 h 42 min by car without traffic or stops.",
+                  "source": "OSRM"
+                },
+                {
+                  "quote": "Cyclone Ditwah In November/December 2025, Cyclone Ditwah damaged 70% of the Sri Lankan railway network. Repair work is ongoing (as of February 2026), but several lines are still out of service: Trains from Badulla and Ella travel as far as Nanu Oya (close to Nuwara Eliya) but don't continue to Kandy or Colombo.",
+                  "source": "Wikivoyage",
+                  "text": "Due to railway damage, trains from Ella currently operate only as far as Nanu Oya and do not run directly to Colombo."
+                },
+                {
+                  "source": "Wikivoyage",
+                  "text": "Leeches are present on countryside paths after rain; carrying hand sanitizer or Dettol helps detach them easily.",
+                  "quote": "There are lots of leeches that hang on to the vegetation by the side of tracks waiting for a nice juicy mammal to walk by. Take some Dettol or hand sanitizer with you and spray it on the offending leech, which will drop off."
+                }
+              ],
+              "costs": [
+                {
+                  "quoted_currency": "LKR",
+                  "per": "person",
+                  "amount_lkr": 3000,
+                  "item": "Ella Organic Tea Garden tour and tasting",
+                  "quantity_note": "1 person tour fee as quoted in the Wikivoyage guide",
+                  "amount_usd": null,
+                  "quantity": 1
+                }
+              ],
+              "days": 2,
+              "summary": "A 2-day itinerary in Ella for a solo Sri Lankan traveler starting from Colombo. Highlights include hiking Little Adam's Peak, visiting Nine Arch Bridge, and taking an organic tea tour.",
+              "start_from": "Colombo",
+              "not_available": [
+                "Live weather forecast from Open-Meteo was unavailable due to a network connection error.",
+                "OpenStreetMap attraction data and straight-line distances were unavailable (sights retrieved from Wikivoyage guide).",
+                "Verified official entrance fees for Little Adam's Peak and Nine Arch Bridge (not listed in official fee database).",
+                "Room availability and food prices.",
+                "Driving times between local attractions within Ella."
+              ],
+              "assumptions": [
+                "Travel between Colombo and Ella is by car or driver.",
+                "Accommodation is already arranged by the traveller."
+              ],
+              "destination": "Ella",
+              "tips": [
+                "Visit Nine Arch Bridge early in the morning for cooler weather and fewer crowds.",
+                "Wear closed shoes and long socks when walking on tea plantation trails to prevent leech bites.",
+                "Scooter rentals and local tuk-tuks are convenient options for getting around Ella town."
+              ]
+            },
+            "id": "call_1144693827414515221",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 7572,
+          "output_tokens": 3457,
+          "total_tokens": 11029,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 2517
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Itinerary checked and shown to the traveller. Do not repeat it.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "submit_itinerary",
+        "id": "5d92358e-678b-4bd4-b970-a4a8c255b2ba",
+        "tool_call_id": "call_1144693827414515221",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "# 2-day trip to Ella\n\nA 2-day itinerary in Ella for a solo Sri Lankan traveler starting from Colombo. Highlights include hiking Little Adam's Peak, visiting Nine Arch Bridge, and taking an organic tea tour.\n\n**Starting point:** Colombo\n\n## Day 1: Arrival from Colombo & Hike to Little Adam's Peak\n*Weather:* No forecast for this day.\n*Travel:* Colombo to Ella: 203 km, about 3 h 42 min by car without traffic (OSRM)\n- **Afternoon: Little Adam's Peak** (about 2 h) - A relatively easy walk east of town through tea plantations leading to scenic viewpoints overlooking Ella Rock and Ravana Falls. _(Wikivoyage)_\n\n## Day 2: Nine Arch Bridge & Tea Estate Experience\n*Weather:* No forecast for this day.\n- **Morning: Nine Arch Bridge** (about 2 h) - Walk along Passara Road or rail tracks to view the famous multi-arched railway bridge in its lush valley. _(Wikivoyage)_\n- **Afternoon: Ella Organic Tea Garden** (about 2 h) - Guided tour of Sri Lanka's organic tea production process, spice introduction, and tea tasting session. _(Wikivoyage)_\n\n## Entrance fees (official sources)\n- Little Adam's Peak: no official price found. Requires confirmation before you go.\n- Nine Arch Bridge: no official price found. Requires confirmation before you go.\n- Ella Organic Tea Garden: no official price found. Requires confirmation before you go.\n\n## Other costs (estimates from Wikivoyage, may be out of date)\n- **Ella Organic Tea Garden tour and tasting**\n  - Price: LKR 3,000 (per person) x 1\n  - Quantity: 1 person tour fee as quoted in the Wikivoyage guide\n  - Per person: LKR 3,000\n  - For the group: LKR 3,000\n\n## Trip budget\n- Group: 1 Sri Lankan adult\n- Verified entrance fees: LKR 0 (USD 0)\n- Other estimated costs: LKR 3,000\n- TOTAL estimated budget for the group: LKR 3,000\n- Per person: LKR 3,000\n- **Requires confirmation**\n  - Little Adam's Peak\n  - Nine Arch Bridge\n  - Ella Organic Tea Garden\n- **Not included (no reliable source here)**\n  - Accommodation (you said you have your own)\n  - Food and drinks\n  - Transport fares (buses, trains, tuk-tuks, a driver)\n  - Guides, tips and personal spending\n- Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\n\n## Practical information\n- The road trip from Colombo to Ella covers 203 km and takes about 3 hours 42 minutes by car without traffic. _(OSRM)_\n- Due to railway damage, trains from Ella currently operate only as far as Nanu Oya and do not run directly to Colombo. _(Wikivoyage)_\n- Leeches are present on countryside paths after rain; carrying hand sanitizer or Dettol helps detach them easily. _(Wikivoyage)_\n\n## Suggestions\n_General advice, not checked against live data._\n- Visit Nine Arch Bridge early in the morning for cooler weather and fewer crowds.\n- Wear closed shoes and long socks when walking on tea plantation trails to prevent leech bites.\n- Scooter rentals and local tuk-tuks are convenient options for getting around Ella town.\n\n## Assumptions\n- Travel between Colombo and Ella is by car or driver.\n- Accommodation is already arranged by the traveller.\n\n## Not available\n- Live weather forecast from Open-Meteo was unavailable due to a network connection error.\n- OpenStreetMap attraction data and straight-line distances were unavailable (sights retrieved from Wikivoyage guide).\n- Verified official entrance fees for Little Adam's Peak and Nine Arch Bridge (not listed in official fee database).\n- Room availability and food prices.\n- Driving times between local attractions within Ella.\n- Weather forecast (the weather service was unavailable)\n- USD value of Ella Organic Tea Garden tour and tasting (no conversion retrieved)\n- Nearby sights from OpenStreetMap (the service failed)\n\n_Sources: Wikivoyage, OSRM._",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "itinerary",
+        "id": "9df03fcd-6d9d-45fa-9ee1-e8550af0ef4a",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}

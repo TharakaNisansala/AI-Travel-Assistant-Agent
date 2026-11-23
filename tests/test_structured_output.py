@@ -49,10 +49,44 @@ def test_invalid_values_are_rejected(bad):
         TripRequest.model_validate(bad)
 
 
+def test_null_lists_become_empty_lists():
+    # Models write null for "none stated"; the Python value stays a list.
+    trip = TripRequest.model_validate({"days": 4, "interests": None, "party": None})
+    assert trip.interests == []
+    assert trip.party == []
+
+
+def test_list_fields_accept_null_in_the_tool_schema():
+    # Seen live with Groq: it checks the arguments against this schema and
+    # rejected null for these arrays (400 tool_use_failed).
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    props = convert_to_openai_tool(TripRequest)["function"]["parameters"]["properties"]
+    for name in ("interests", "party"):
+        types = {option.get("type") for option in props[name]["anyOf"]}
+        assert {"array", "null"} <= types, name
+
+
+def test_trip_request_still_converts_to_a_gemini_function_declaration():
+    from langchain_core.tools import StructuredTool
+    from langchain_google_genai._function_utils import (
+        convert_to_genai_function_declarations,
+    )
+
+    tool = StructuredTool.from_function(
+        func=lambda **_: None, name="trip", description="Trip.", args_schema=TripRequest
+    )
+    [genai_tool] = convert_to_genai_function_declarations([tool])
+    [function] = genai_tool.function_declarations
+    assert {"interests", "party"} <= set(function.parameters.properties)
+
+
 def test_schema_descriptions_reach_the_json_schema():
     # These descriptions are what Gemini reads, so they must be in the schema.
     props = TripRequest.model_json_schema()["properties"]
     assert "Null if" in props["destination"]["description"]
+    # Seen live: "two Indian adults" left children null and asked about it.
+    assert "0 when they say everyone is an adult" in props["children"]["description"]
     assert set(props) == {
         "destination",
         "days",
@@ -61,6 +95,14 @@ def test_schema_descriptions_reach_the_json_schema():
         "travel_dates",
         "travellers",
         "pace",
+        "children",
+        "nationality",
+        "citizenship",
+        "party",
+        "origin",
+        "wants_hotels",
+        "room_budget",
+        "room_budget_currency",
     }
 
 
