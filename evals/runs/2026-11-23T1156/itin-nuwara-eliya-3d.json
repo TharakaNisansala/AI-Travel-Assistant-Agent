@@ -1,0 +1,592 @@
+{
+  "format": 1,
+  "run_id": "2026-11-23T1156",
+  "scenario_id": "itin-nuwara-eliya-3d",
+  "category": "itinerary",
+  "started_at": "2026-11-23T07:00:25.554498Z",
+  "model": "gemini-3.5-flash",
+  "faults": null,
+  "turns": [
+    {
+      "text": "Plan 3 days in Nuwara Eliya for a Sri Lankan family of 2 adults and 1 child, starting from Colombo; we want to see tea estates. We already have a hotel.",
+      "route": "agent",
+      "intent": "plan",
+      "trip_request": {
+        "destination": "Nuwara Eliya",
+        "days": 3,
+        "interests": [
+          "tea estates"
+        ],
+        "budget": null,
+        "travel_dates": null,
+        "travellers": 3,
+        "children": 1,
+        "pace": null,
+        "nationality": "Sri Lankan",
+        "citizenship": "local",
+        "party": [],
+        "origin": "Colombo",
+        "wants_hotels": false,
+        "room_budget": null,
+        "room_budget_currency": null
+      },
+      "missing_fields": [],
+      "question": null,
+      "itinerary": {
+        "destination": "Nuwara Eliya",
+        "days": 3,
+        "start_from": "Colombo",
+        "start_assumed": false,
+        "summary": "A scenic 3-day Hill Country trip for a Sri Lankan family from Colombo to Nuwara Eliya, taking in tea estates, Single Tree Hill, town landmarks, and Lake Gregory.",
+        "day_plans": [
+          {
+            "day": 1,
+            "theme": "Drive from Colombo & Town Landmark Exploration",
+            "forecast_date": "2026-11-23",
+            "travel": [
+              {
+                "from_place": "Colombo",
+                "to_place": "Nuwara Eliya",
+                "road_distance_km": 159.0,
+                "driving_minutes": 186.0
+              }
+            ],
+            "activities": [
+              {
+                "time_of_day": "afternoon",
+                "name": "Nuwara Eliya Post Office",
+                "description": "Visit the iconic two-storey Tudor-style red brick post office located in the town centre and check out the postcard and stamp shop.",
+                "estimated_hours": 1.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              },
+              {
+                "time_of_day": "afternoon",
+                "name": "Victoria Park",
+                "description": "Explore Victoria Park to view diverse flora ranging from tropical rain forest plants to English gardens, and visit Victoria Museum at the southern end.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": "2026-11-23: dense drizzle; min 12.2 °C, max 20.6 °C; chance of precipitation 100%; rainfall 4.6 mm; max wind 5.4 km/h (Open-Meteo)"
+          },
+          {
+            "day": 2,
+            "theme": "Tea Estates & Scenic Hill Hike",
+            "forecast_date": "2026-11-24",
+            "travel": [],
+            "activities": [
+              {
+                "time_of_day": "morning",
+                "name": "Single Tree Hill",
+                "description": "Walk up through lush tea plantations southwest of town to the summit of Single Tree Hill for panoramic views of Nuwara Eliya.",
+                "estimated_hours": 3.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": "2026-11-24: moderate rain showers; min 12.5 °C, max 22.5 °C; chance of precipitation 100%; rainfall 18.3 mm; max wind 4.0 km/h (Open-Meteo)"
+          },
+          {
+            "day": 3,
+            "theme": "Lake Recreation & Return to Colombo",
+            "forecast_date": "2026-11-25",
+            "travel": [
+              {
+                "from_place": "Nuwara Eliya",
+                "to_place": "Colombo",
+                "road_distance_km": 159.0,
+                "driving_minutes": 186.0
+              }
+            ],
+            "activities": [
+              {
+                "time_of_day": "morning",
+                "name": "Lake Gregory",
+                "description": "Spend time by Lake Gregory enjoying the serene park, sightseeing, and family-friendly boat rides before commencing the return journey.",
+                "estimated_hours": 2.0,
+                "distance_km": null,
+                "source": "Wikivoyage"
+              }
+            ],
+            "weather": "2026-11-25: moderate rain showers; min 13.5 °C, max 21.3 °C; chance of precipitation 100%; rainfall 17.2 mm; max wind 5.1 km/h (Open-Meteo)"
+          }
+        ],
+        "costs": [],
+        "facts": [
+          {
+            "text": "The driving distance from Colombo to Nuwara Eliya is approximately 159 km.",
+            "quote": "Road distance: 159 km (straight line 103 km).",
+            "source": "OSRM"
+          },
+          {
+            "text": "Driving time by car without traffic or stops is estimated at 3 hours 6 minutes.",
+            "quote": "Driving time: about 3 h 6 min by car without traffic or stops.",
+            "source": "OSRM"
+          },
+          {
+            "text": "Nuwara Eliya Post Office is a Tudor-style red brick structure located near the main town roundabout.",
+            "quote": "A picturesque Tudor-style, two-storey red brick building close to the big roundabout at the centre of town.",
+            "source": "Wikivoyage"
+          },
+          {
+            "text": "Nuwara Eliya is located in the Hill Country at an altitude of 1,868 meters above sea level.",
+            "quote": "at lat 6.97, lon 80.78, elevation 1868 m.",
+            "source": "Open-Meteo"
+          }
+        ],
+        "tips": [
+          "Bring warm clothing and waterproof jackets or umbrellas, as Nuwara Eliya experiences cool temperatures and light to moderate rainfall/drizzle.",
+          "Start morning walks and hikes up Single Tree Hill early to catch the best clear views before afternoon clouds roll in."
+        ],
+        "assumptions": [
+          "Travel duration estimates from OSRM are for free-flow car driving; actual transit through mountain roads will take longer.",
+          "Accommodation and main meals are arranged independently by the travellers."
+        ],
+        "not_available": [
+          "Live attraction data with straight-line distances from OpenStreetMap (Wikivoyage fallback list was used due to server unavailability).",
+          "Verified official entrance fee prices for Hakgala Botanical Garden, Horton Plains National Park, Victoria Park, and Pedro Tea Estate.",
+          "Driving/travel times between specific sights within Nuwara Eliya town.",
+          "Hotel availability and restaurant meal prices.",
+          "Nearby sights from OpenStreetMap (the service failed)"
+        ],
+        "warnings": [],
+        "entrance_fees": [
+          {
+            "query": "Victoria Park",
+            "name": null,
+            "categories": [],
+            "group": [],
+            "sources": [],
+            "conditions": "",
+            "extras": [],
+            "verified_lkr": 0.0,
+            "verified_usd": 0.0
+          }
+        ],
+        "cost_lines": [],
+        "stays": null,
+        "budget": {
+          "group": "2 Sri Lankan adults, 1 Sri Lankan child",
+          "travellers": 3,
+          "entrance_verified_lkr": 0.0,
+          "entrance_verified_usd": 0.0,
+          "entrance_estimated_lkr": 0.0,
+          "entrance_estimated_usd": 0.0,
+          "other_estimated_lkr": 0.0,
+          "other_estimated_usd": 0.0,
+          "accommodation_lkr": null,
+          "accommodation_usd": null,
+          "accommodation_note": "",
+          "total_lkr": 0.0,
+          "total_usd": 0.0,
+          "per_person_lkr": null,
+          "per_person_usd": null,
+          "not_verified": [],
+          "requires_confirmation": [
+            "Victoria Park"
+          ],
+          "not_included": [
+            "Accommodation (you said you have your own)",
+            "Food and drinks",
+            "Transport fares (buses, trains, tuk-tuks, a driver)",
+            "Guides, tips and personal spending"
+          ],
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given."
+        }
+      },
+      "message_count": 10,
+      "llm_calls": 3,
+      "seconds": 71.687
+    }
+  ],
+  "message_data": [
+    {
+      "type": "human",
+      "data": {
+        "content": "Plan 3 days in Nuwara Eliya for a Sri Lankan family of 2 adults and 1 child, starting from Colombo; we want to see tea estates. We already have a hotel.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "fce7fc15-f1c0-49ef-8ee0-1d354848def9"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "get_attraction_prices",
+            "arguments": "{\"attractions\": [\"Hakgala Botanical Garden\", \"Horton Plains National Park\", \"Victoria Park\", \"Pedro Tea Estate\"]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_4403098804104146374": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20734-ec1d-77b9-8fe6-e1fed590abba-0",
+        "tool_calls": [
+          {
+            "name": "get_destination_guide",
+            "args": {
+              "topic": "all",
+              "destination": "Nuwara Eliya"
+            },
+            "id": "call_4403098804104146374",
+            "type": "tool_call"
+          },
+          {
+            "name": "find_attractions",
+            "args": {
+              "destination": "Nuwara Eliya",
+              "category": "all"
+            },
+            "id": "call_4403098804104146699",
+            "type": "tool_call"
+          },
+          {
+            "name": "get_weather_forecast",
+            "args": {
+              "destination": "Nuwara Eliya"
+            },
+            "id": "call_4403098804104142928",
+            "type": "tool_call"
+          },
+          {
+            "name": "estimate_travel_time",
+            "args": {
+              "destination": "Nuwara Eliya",
+              "origin": "Colombo"
+            },
+            "id": "call_4403098804104143253",
+            "type": "tool_call"
+          },
+          {
+            "name": "get_attraction_prices",
+            "args": {
+              "attractions": [
+                "Hakgala Botanical Garden",
+                "Horton Plains National Park",
+                "Victoria Park",
+                "Pedro Tea Estate"
+              ]
+            },
+            "id": "call_4403098804104143578",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 4736,
+          "output_tokens": 752,
+          "total_tokens": 5488,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 604
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Wikivoyage guide for Nuwara Eliya (all topics):\n[Introduction] Nuwara Eliya (pronounced nu-REL-iya) is a city in the Hill Country of Sri Lanka. At 1,868 m (6,129 ft) altitude, the architecture and temperate climate gives it a very different feel from the rest of the country.\n[Understand] The city was founded by British explorer Samuel Baker in 1846. Nuwara Eliya (which literally means 'city of lights') was built as a hill country retreat where the British colonialists could immerse themselves in pastimes such as fox hunting, deer hunting, elephant hunting, polo, golf and cricket. ...\n[Get in] By train: Seven times daily there are trains coming from Colombo or Kandy, and they then proceed further to Badulla. The journey between Kandy and Ella is considered one of the most spectacular in the world. Book tickets well in advance, because unreserved coaches get crowded. There are 4 trains per day from Kandy, 4-5½ hours, 2nd class Rs 1200, 1st class/observation saloon Rs 2000. ...\n[Get around] The town centre is small enough to walk around. To visit sites further afield, take a bus or hire a three-wheeler. A tuktuk within town (e.g. from city center to Pedro Tea Factory) should cost around Rs 700 (2024). The same caveat applies to touring around the area as for getting there. Assume that you'll not exceed 20 km/h no matter what the mode of (ground) transport. ...\n[See] 1 Victoria Park. A pleasant place to spend an hour or so, with an astonishing variety of plants, ranging from tropical rain forest to English country garden. At the far southern end of it there is Victoria Museum which houses a collection of old colonial era photos, entrance fee is included into Victoria Park's entrance ticket. Rs1000 (kids 500). (updated May 2025) 2 Nuwara Eliya Post Office. ...\n[Do] Take a walk up through the tea plantations south-west of the town to the top of Single Tree Hill for a splendid view over Nuwara Eliya. From the hill top you can walk north for a couple of kilometres along the ridgetop to a nearby village and get a tuk-tuk/three-wheeler or walk back to town. Playing golf is also an option at 1 Nuwara Eliya Golf, along with heading to the 2 racecourses (the only proper ones in Sri Lanka). ...\n[Sleep] Budget: Blue Moon Guest House, Ranasinghe Mawatha. Guest house with 4 bedrooms, dining area, and common sitting area. Friendly staff. US$15-20. Mid-range: Mount View Cottage (is a small guesthouses with 4 rooms. Clean accommodation and is operated by honest people. They will arrange tours to Horton's Plains using the guesthouse's van for a reasonable amount of money (see section above). From US$50/57. ...\nNot covered by this article: safety and health. Do not fill this in.\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Nuwara_Eliya\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_destination_guide",
+        "id": "5876a0c5-b4da-4685-a909-0d0eb7cdc637",
+        "tool_call_id": "call_4403098804104146374",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Attractions unavailable for 'Nuwara Eliya': No Overpass server could complete the search. overpass-api.de: The Overpass API returned HTTP 502. overpass.private.coffee: The Overpass API did not respond within 30 seconds.\nFALLBACK: sights named in the Wikivoyage guide instead (no distances, not filtered by category).\nWikivoyage guide for Nuwara Eliya (see and do):\n[See] 1 Victoria Park. A pleasant place to spend an hour or so, with an astonishing variety of plants, ranging from tropical rain forest to English country garden. At the far southern end of it there is Victoria Museum which houses a collection of old colonial era photos, entrance fee is included into Victoria Park's entrance ticket. Rs1000 (kids 500). (updated May 2025) 2 Nuwara Eliya Post Office. A picturesque Tudor-style, two-storey red brick building close to the big roundabout at the centre of town. One of the oldest post offices in Sri Lanka and still in use. It has a postcard and stamp collectors shop, which sells some recent first day covers, from 100Rs. (updated May 2025) 3 Lake Gregory (less than a mile from the centre of town). Large man-made lake, along the edge is a beautiful park, with water sports (paddle boats, jet ski rides and cruises) as well as other recreational activities. Offers a splendid and peaceful environment for sightseeing and boating. Boats can be hired from the area. Entrance to the Lake Gregory park Rs1000 (kids 500). (updated May 2025) 4 Hill Club. ...\n[Do] Take a walk up through the tea plantations south-west of the town to the top of Single Tree Hill for a splendid view over Nuwara Eliya. From the hill top you can walk north for a couple of kilometres along the ridgetop to a nearby village and get a tuk-tuk/three-wheeler or walk back to town. Playing golf is also an option at 1 Nuwara Eliya Golf, along with heading to the 2 racecourses (the only proper ones in Sri Lanka). These are both traditions left over from the colonial era. Take a train trip from Nanu Oya towards Kandy. For the colonial experience book a 1st class ticket in the observation car. For an authentic local experience book a 3rd class ticket and hang out of the door of the carriage. Further afield: 3 Adam's Peak (There are regular buses from Hatton (railway connection, right behind the railway station in high season, Rs 200) or Maskeliya (Rs 100) to Dalhousie (Nallathanniya). (Maskeliya is also a good hub for the Gartmore Falls.) The peak can also be reached from the Ratnapura side, even though this trail goes through the jungle and is less favourable than the staircase from Dalhousie.). ...\nSections ending in ... were shortened; full article: https://en.wikivoyage.org/wiki/Nuwara_Eliya\nSource: Wikivoyage, community-written (CC BY-SA 4.0); prices, timetables and transport details may be out of date.\nMention only sights named above, say they come from Wikivoyage because OpenStreetMap could not be reached, and do not invent attractions or distances.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "find_attractions",
+        "id": "637ee8aa-43d2-4791-ab5b-58695fb785c8",
+        "tool_call_id": "call_4403098804104146699",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Weather forecast for Nuwara Eliya (Nuwara Eliya District, Central Province, Sri Lanka), at lat 6.97, lon 80.78, elevation 1868 m.\nTimes are local (Asia/Colombo).\nCurrent conditions (2026-11-23 12:30): 19.3 °C, light drizzle, wind 2.5 km/h, precipitation 0.1 mm.\nDaily forecast (3 days):\n- 2026-11-23 (Mon): dense drizzle; min 12.2 °C, max 20.6 °C; chance of precipitation 100%; rainfall 4.6 mm; max wind 5.4 km/h.\n- 2026-11-24 (Tue): moderate rain showers; min 12.5 °C, max 22.5 °C; chance of precipitation 100%; rainfall 18.3 mm; max wind 4.0 km/h.\n- 2026-11-25 (Wed): moderate rain showers; min 13.5 °C, max 21.3 °C; chance of precipitation 100%; rainfall 17.2 mm; max wind 5.1 km/h.\nSource: Open-Meteo live forecast API (open-meteo.com).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_weather_forecast",
+        "id": "dc4786e2-9093-4959-9fea-d3d637aee502",
+        "tool_call_id": "call_4403098804104142928",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Road trip from Colombo (Colombo District, Western Province, Sri Lanka) to Nuwara Eliya (Nuwara Eliya District, Central Province, Sri Lanka):\n- Road distance: 159 km (straight line 103 km).\n- Driving time: about 3 h 6 min by car without traffic or stops.\nThis is a free-flow car estimate: real journeys, especially on hill roads or by bus, tuk-tuk or train, usually take longer. Say so.\nSource: OSRM routing on OpenStreetMap roads (© OpenStreetMap contributors).",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "estimate_travel_time",
+        "id": "411a3699-e142-4d07-a8e1-74932c90d393",
+        "tool_call_id": "call_4403098804104143253",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Ticket prices by visitor category (from official sources only):\n\nHakgala Botanical Garden: no price found in any official source. Requires confirmation; do not state a price for it.\n\nHorton Plains National Park: no price found in any official source. Requires confirmation; do not state a price for it.\n\nVictoria Park: no price found in any official source. Requires confirmation; do not state a price for it.\n\nPedro Tea Estate: no price found in any official source. Requires confirmation; do not state a price for it.\n\nGroup: 2 Sri Lankan adults, 1 Sri Lankan child.\nVerified entrance fees for the group: LKR 0 (USD 0)\nRequires confirmation: Hakgala Botanical Garden, Horton Plains National Park, Victoria Park, Pedro Tea Estate\nOther-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\nUse these figures exactly. Never fill in a 'Not verified' price, never use one category's price for another, and label every estimate as an estimate. In an itinerary, entrance fees are added from these results automatically: do not put them in costs.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "get_attraction_prices",
+        "id": "ec18d1a9-3be0-4f91-b992-43f80b56e9e4",
+        "tool_call_id": "call_4403098804104143578",
+        "artifact": {
+          "checked_on": "2026-11-23",
+          "lkr_per_usd": 332.392719,
+          "rate_note": "Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.",
+          "problems": [],
+          "attractions": [
+            {
+              "query": "Hakgala Botanical Garden",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Horton Plains National Park",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Victoria Park",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            },
+            {
+              "query": "Pedro Tea Estate",
+              "attraction_id": null,
+              "name": null,
+              "records": []
+            }
+          ]
+        },
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": [],
+        "additional_kwargs": {
+          "function_call": {
+            "name": "submit_itinerary",
+            "arguments": "{\"assumptions\": [\"Travel duration estimates from OSRM are for free-flow car driving; actual transit through mountain roads will take longer.\", \"Accommodation and main meals are arranged independently by the travellers.\"], \"start_assumed\": false, \"destination\": \"Nuwara Eliya\", \"tips\": [\"Bring warm clothing and waterproof jackets or umbrellas, as Nuwara Eliya experiences cool temperatures and light to moderate rainfall/drizzle.\", \"Start morning walks and hikes up Single Tree Hill early to catch the best clear views before afternoon clouds roll in.\"], \"not_available\": [\"Live attraction data with straight-line distances from OpenStreetMap (Wikivoyage fallback list was used due to server unavailability).\", \"Verified official entrance fee prices for Hakgala Botanical Garden, Horton Plains National Park, Victoria Park, and Pedro Tea Estate.\", \"Driving/travel times between specific sights within Nuwara Eliya town.\", \"Hotel availability and restaurant meal prices.\"], \"facts\": [{\"text\": \"The driving distance from Colombo to Nuwara Eliya is approximately 159 km.\", \"source\": \"OSRM\", \"quote\": \"Road distance: 159 km (straight line 103 km).\"}, {\"quote\": \"Driving time: about 3 h 6 min by car without traffic or stops.\", \"source\": \"OSRM\", \"text\": \"Driving time by car without traffic or stops is estimated at 3 hours 6 minutes.\"}, {\"text\": \"Nuwara Eliya Post Office is a Tudor-style red brick structure located near the main town roundabout.\", \"source\": \"Wikivoyage\", \"quote\": \"A picturesque Tudor-style, two-storey red brick building close to the big roundabout at the centre of town.\"}, {\"text\": \"Nuwara Eliya is located in the Hill Country at an altitude of 1,868 meters above sea level.\", \"source\": \"Open-Meteo\", \"quote\": \"at lat 6.97, lon 80.78, elevation 1868 m.\"}], \"summary\": \"A scenic 3-day Hill Country trip for a Sri Lankan family from Colombo to Nuwara Eliya, taking in tea estates, Single Tree Hill, town landmarks, and Lake Gregory.\", \"start_from\": \"Colombo\", \"costs\": [], \"days\": 3, \"day_plans\": [{\"activities\": [{\"source\": \"Wikivoyage\", \"distance_km\": null, \"description\": \"Visit the iconic two-storey Tudor-style red brick post office located in the town centre and check out the postcard and stamp shop.\", \"name\": \"Nuwara Eliya Post Office\", \"time_of_day\": \"afternoon\", \"estimated_hours\": 1}, {\"distance_km\": null, \"estimated_hours\": 2, \"name\": \"Victoria Park\", \"description\": \"Explore Victoria Park to view diverse flora ranging from tropical rain forest plants to English gardens, and visit Victoria Museum at the southern end.\", \"time_of_day\": \"afternoon\", \"source\": \"Wikivoyage\"}], \"day\": 1, \"forecast_date\": \"2026-11-23\", \"theme\": \"Drive from Colombo & Town Landmark Exploration\", \"travel\": [{\"to_place\": \"Nuwara Eliya\", \"from_place\": \"Colombo\", \"road_distance_km\": 159, \"driving_minutes\": 186}]}, {\"day\": 2, \"activities\": [{\"description\": \"Walk up through lush tea plantations southwest of town to the summit of Single Tree Hill for panoramic views of Nuwara Eliya.\", \"time_of_day\": \"morning\", \"estimated_hours\": 3, \"source\": \"Wikivoyage\", \"name\": \"Single Tree Hill\", \"distance_km\": null}], \"forecast_date\": \"2026-11-24\", \"travel\": [], \"theme\": \"Tea Estates & Scenic Hill Hike\"}, {\"day\": 3, \"theme\": \"Lake Recreation & Return to Colombo\", \"activities\": [{\"distance_km\": null, \"source\": \"Wikivoyage\", \"name\": \"Lake Gregory\", \"time_of_day\": \"morning\", \"description\": \"Spend time by Lake Gregory enjoying the serene park, sightseeing, and family-friendly boat rides before commencing the return journey.\", \"estimated_hours\": 2}], \"forecast_date\": \"2026-11-25\", \"travel\": [{\"to_place\": \"Colombo\", \"driving_minutes\": 186, \"from_place\": \"Nuwara Eliya\", \"road_distance_km\": 159}]}]}"
+          },
+          "__gemini_function_call_thought_signatures__": {
+            "call_17774719206067756570": "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"
+          }
+        },
+        "response_metadata": {
+          "finish_reason": "STOP",
+          "model_name": "gemini-3.6-flash",
+          "safety_ratings": [],
+          "model_provider": "google_genai"
+        },
+        "type": "ai",
+        "name": null,
+        "id": "lc_run--01a20735-8b79-7439-a7a3-aedb97f20c1c-0",
+        "tool_calls": [
+          {
+            "name": "submit_itinerary",
+            "args": {
+              "assumptions": [
+                "Travel duration estimates from OSRM are for free-flow car driving; actual transit through mountain roads will take longer.",
+                "Accommodation and main meals are arranged independently by the travellers."
+              ],
+              "start_assumed": false,
+              "destination": "Nuwara Eliya",
+              "tips": [
+                "Bring warm clothing and waterproof jackets or umbrellas, as Nuwara Eliya experiences cool temperatures and light to moderate rainfall/drizzle.",
+                "Start morning walks and hikes up Single Tree Hill early to catch the best clear views before afternoon clouds roll in."
+              ],
+              "not_available": [
+                "Live attraction data with straight-line distances from OpenStreetMap (Wikivoyage fallback list was used due to server unavailability).",
+                "Verified official entrance fee prices for Hakgala Botanical Garden, Horton Plains National Park, Victoria Park, and Pedro Tea Estate.",
+                "Driving/travel times between specific sights within Nuwara Eliya town.",
+                "Hotel availability and restaurant meal prices."
+              ],
+              "facts": [
+                {
+                  "text": "The driving distance from Colombo to Nuwara Eliya is approximately 159 km.",
+                  "source": "OSRM",
+                  "quote": "Road distance: 159 km (straight line 103 km)."
+                },
+                {
+                  "quote": "Driving time: about 3 h 6 min by car without traffic or stops.",
+                  "source": "OSRM",
+                  "text": "Driving time by car without traffic or stops is estimated at 3 hours 6 minutes."
+                },
+                {
+                  "text": "Nuwara Eliya Post Office is a Tudor-style red brick structure located near the main town roundabout.",
+                  "source": "Wikivoyage",
+                  "quote": "A picturesque Tudor-style, two-storey red brick building close to the big roundabout at the centre of town."
+                },
+                {
+                  "text": "Nuwara Eliya is located in the Hill Country at an altitude of 1,868 meters above sea level.",
+                  "source": "Open-Meteo",
+                  "quote": "at lat 6.97, lon 80.78, elevation 1868 m."
+                }
+              ],
+              "summary": "A scenic 3-day Hill Country trip for a Sri Lankan family from Colombo to Nuwara Eliya, taking in tea estates, Single Tree Hill, town landmarks, and Lake Gregory.",
+              "start_from": "Colombo",
+              "costs": [],
+              "days": 3,
+              "day_plans": [
+                {
+                  "activities": [
+                    {
+                      "source": "Wikivoyage",
+                      "distance_km": null,
+                      "description": "Visit the iconic two-storey Tudor-style red brick post office located in the town centre and check out the postcard and stamp shop.",
+                      "name": "Nuwara Eliya Post Office",
+                      "time_of_day": "afternoon",
+                      "estimated_hours": 1
+                    },
+                    {
+                      "distance_km": null,
+                      "estimated_hours": 2,
+                      "name": "Victoria Park",
+                      "description": "Explore Victoria Park to view diverse flora ranging from tropical rain forest plants to English gardens, and visit Victoria Museum at the southern end.",
+                      "time_of_day": "afternoon",
+                      "source": "Wikivoyage"
+                    }
+                  ],
+                  "day": 1,
+                  "forecast_date": "2026-11-23",
+                  "theme": "Drive from Colombo & Town Landmark Exploration",
+                  "travel": [
+                    {
+                      "to_place": "Nuwara Eliya",
+                      "from_place": "Colombo",
+                      "road_distance_km": 159,
+                      "driving_minutes": 186
+                    }
+                  ]
+                },
+                {
+                  "day": 2,
+                  "activities": [
+                    {
+                      "description": "Walk up through lush tea plantations southwest of town to the summit of Single Tree Hill for panoramic views of Nuwara Eliya.",
+                      "time_of_day": "morning",
+                      "estimated_hours": 3,
+                      "source": "Wikivoyage",
+                      "name": "Single Tree Hill",
+                      "distance_km": null
+                    }
+                  ],
+                  "forecast_date": "2026-11-24",
+                  "travel": [],
+                  "theme": "Tea Estates & Scenic Hill Hike"
+                },
+                {
+                  "day": 3,
+                  "theme": "Lake Recreation & Return to Colombo",
+                  "activities": [
+                    {
+                      "distance_km": null,
+                      "source": "Wikivoyage",
+                      "name": "Lake Gregory",
+                      "time_of_day": "morning",
+                      "description": "Spend time by Lake Gregory enjoying the serene park, sightseeing, and family-friendly boat rides before commencing the return journey.",
+                      "estimated_hours": 2
+                    }
+                  ],
+                  "forecast_date": "2026-11-25",
+                  "travel": [
+                    {
+                      "to_place": "Colombo",
+                      "driving_minutes": 186,
+                      "from_place": "Nuwara Eliya",
+                      "road_distance_km": 159
+                    }
+                  ]
+                }
+              ]
+            },
+            "id": "call_17774719206067756570",
+            "type": "tool_call"
+          }
+        ],
+        "invalid_tool_calls": [],
+        "usage_metadata": {
+          "input_tokens": 7739,
+          "output_tokens": 4507,
+          "total_tokens": 12246,
+          "input_token_details": {
+            "cache_read": 0
+          },
+          "output_token_details": {
+            "reasoning": 3512
+          }
+        }
+      }
+    },
+    {
+      "type": "tool",
+      "data": {
+        "content": "Itinerary checked and shown to the traveller. Do not repeat it.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "tool",
+        "name": "submit_itinerary",
+        "id": "7ec89e2a-1715-43ce-82bb-217ed1a33ee7",
+        "tool_call_id": "call_17774719206067756570",
+        "artifact": null,
+        "status": "success"
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "# 3-day trip to Nuwara Eliya\n\nA scenic 3-day Hill Country trip for a Sri Lankan family from Colombo to Nuwara Eliya, taking in tea estates, Single Tree Hill, town landmarks, and Lake Gregory.\n\n**Starting point:** Colombo\n\n## Day 1: Drive from Colombo & Town Landmark Exploration\n*Weather:* 2026-11-23: dense drizzle; min 12.2 °C, max 20.6 °C; chance of precipitation 100%; rainfall 4.6 mm; max wind 5.4 km/h (Open-Meteo)\n*Travel:* Colombo to Nuwara Eliya: 159 km, about 3 h 6 min by car without traffic (OSRM)\n- **Afternoon: Nuwara Eliya Post Office** (about 1 h) - Visit the iconic two-storey Tudor-style red brick post office located in the town centre and check out the postcard and stamp shop. _(Wikivoyage)_\n- **Afternoon: Victoria Park** (about 2 h) - Explore Victoria Park to view diverse flora ranging from tropical rain forest plants to English gardens, and visit Victoria Museum at the southern end. _(Wikivoyage)_\n\n## Day 2: Tea Estates & Scenic Hill Hike\n*Weather:* 2026-11-24: moderate rain showers; min 12.5 °C, max 22.5 °C; chance of precipitation 100%; rainfall 18.3 mm; max wind 4.0 km/h (Open-Meteo)\n- **Morning: Single Tree Hill** (about 3 h) - Walk up through lush tea plantations southwest of town to the summit of Single Tree Hill for panoramic views of Nuwara Eliya. _(Wikivoyage)_\n\n## Day 3: Lake Recreation & Return to Colombo\n*Weather:* 2026-11-25: moderate rain showers; min 13.5 °C, max 21.3 °C; chance of precipitation 100%; rainfall 17.2 mm; max wind 5.1 km/h (Open-Meteo)\n*Travel:* Nuwara Eliya to Colombo: 159 km, about 3 h 6 min by car without traffic (OSRM)\n- **Morning: Lake Gregory** (about 2 h) - Spend time by Lake Gregory enjoying the serene park, sightseeing, and family-friendly boat rides before commencing the return journey. _(Wikivoyage)_\n\n## Entrance fees (official sources)\n- Victoria Park: no official price found. Requires confirmation before you go.\n\n## Trip budget\n- Group: 2 Sri Lankan adults, 1 Sri Lankan child\n- Verified entrance fees: LKR 0 (USD 0)\n- TOTAL estimated budget for the group: LKR 0 (USD 0)\n- Per person: differs by visitor category; see the entrance fee lines above.\n- **Requires confirmation**\n  - Victoria Park\n- **Not included (no reliable source here)**\n  - Accommodation (you said you have your own)\n  - Food and drinks\n  - Transport fares (buses, trains, tuk-tuks, a driver)\n  - Guides, tips and personal spending\n- Other-currency amounts use 1 USD = 332.39 LKR (indicative mid-market rate); a source's own LKR figure is used as given.\n\n## Practical information\n- The driving distance from Colombo to Nuwara Eliya is approximately 159 km. _(OSRM)_\n- Driving time by car without traffic or stops is estimated at 3 hours 6 minutes. _(OSRM)_\n- Nuwara Eliya Post Office is a Tudor-style red brick structure located near the main town roundabout. _(Wikivoyage)_\n- Nuwara Eliya is located in the Hill Country at an altitude of 1,868 meters above sea level. _(Open-Meteo)_\n\n## Suggestions\n_General advice, not checked against live data._\n- Bring warm clothing and waterproof jackets or umbrellas, as Nuwara Eliya experiences cool temperatures and light to moderate rainfall/drizzle.\n- Start morning walks and hikes up Single Tree Hill early to catch the best clear views before afternoon clouds roll in.\n\n## Assumptions\n- Travel duration estimates from OSRM are for free-flow car driving; actual transit through mountain roads will take longer.\n- Accommodation and main meals are arranged independently by the travellers.\n\n## Not available\n- Live attraction data with straight-line distances from OpenStreetMap (Wikivoyage fallback list was used due to server unavailability).\n- Verified official entrance fee prices for Hakgala Botanical Garden, Horton Plains National Park, Victoria Park, and Pedro Tea Estate.\n- Driving/travel times between specific sights within Nuwara Eliya town.\n- Hotel availability and restaurant meal prices.\n- Nearby sights from OpenStreetMap (the service failed)\n\n_Sources: Wikivoyage, OSRM, Open-Meteo._",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": "itinerary",
+        "id": "f76dd96b-0c28-4d4c-a057-b564666219b6",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ],
+  "error": null
+}
