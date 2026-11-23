@@ -430,6 +430,23 @@ def test_groq_transient_errors_are_retried(exc):
     assert is_transient_llm_error(exc)
 
 
+GROQ_TOO_LARGE = groq_status_error(
+    413,
+    "Error code: 413 - {'error': {'message': 'Request too large for model `m` "
+    "on tokens per minute (TPM): Limit 8000, Requested 8952', 'type': 'tokens', "
+    "'code': 'rate_limit_exceeded'}}",
+)
+
+
+def test_groq_413_over_the_minute_limit_is_a_rate_limit():
+    assert is_rate_limited(GROQ_TOO_LARGE)
+    assert not is_transient_llm_error(GROQ_TOO_LARGE)
+    assert not is_quota_exhausted(GROQ_TOO_LARGE)
+    assert describe_llm_error(GROQ_TOO_LARGE) == RATE_LIMIT_MESSAGE
+    # Any other 413 is not a rate limit.
+    assert not is_rate_limited(groq_status_error(413, "Payload too large"))
+
+
 def test_groq_429s_are_not_retried():
     assert not is_transient_llm_error(GROQ_PER_MINUTE)
     assert is_quota_exhausted(GROQ_DAILY)

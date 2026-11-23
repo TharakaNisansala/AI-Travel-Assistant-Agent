@@ -41,6 +41,8 @@ from ai_travel_assistant.context_window import current_turn_start
 # Server-side statuses that usually clear up within seconds.
 TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
 RATE_LIMIT_STATUS = 429
+TOO_LARGE_STATUS = 413
+_RATE_LIMIT_CODE = re.compile(r"rate_limit_exceeded")
 
 _LEADING_STATUS = re.compile(r"^\s*(\d{3})\b")
 # How the per-day quota is named in a 429: Google says GenerateRequestsPerDay...,
@@ -65,8 +67,16 @@ def error_status(exc: BaseException) -> int | None:
 
 
 def is_rate_limited(exc: BaseException) -> bool:
-    """True for a 429: too many requests per minute, or the daily quota."""
-    return error_status(exc) == RATE_LIMIT_STATUS
+    """True for a 429: too many requests per minute, or the daily quota.
+
+    Also Groq's 413 with code rate_limit_exceeded: ONE request bigger than the
+    tokens-per-minute limit (seen live: 8,952 tokens against 8,000). It is the
+    provider's limit, not the agent's fault, and retrying cannot fix it.
+    """
+    status = error_status(exc)
+    if status == TOO_LARGE_STATUS:
+        return bool(_RATE_LIMIT_CODE.search(str(exc)))
+    return status == RATE_LIMIT_STATUS
 
 
 def is_quota_exhausted(exc: BaseException) -> bool:
