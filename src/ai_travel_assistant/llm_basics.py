@@ -77,6 +77,23 @@ def load_settings() -> LLMSettings:
         raise ConfigError(
             f"Unknown LLM_PROVIDER '{provider}'. Use one of: {', '.join(PROVIDERS)}."
         )
+    settings, missing = provider_settings(provider)
+    if settings is None:
+        raise ConfigError(
+            f"Missing {', '.join(missing)} (LLM_PROVIDER={provider}). "
+            "Copy .env.example to .env and fill it in."
+        )
+    return settings
+
+
+def provider_settings(provider: str) -> tuple[LLMSettings | None, list[str]]:
+    """One provider's settings from the environment, without raising.
+
+    Returns (settings, []) when its key and model are set, or
+    (None, [missing variable names]). Does not read .env: callers do that.
+    The provider pool (provider_pool.py) uses it to skip providers that have
+    no credentials instead of failing.
+    """
     key_var, model_var = PROVIDERS[provider]
     api_key = os.getenv(key_var, "").strip()
     model = os.getenv(model_var, "").strip() or DEFAULT_MODELS.get(provider, "")
@@ -89,13 +106,11 @@ def load_settings() -> LLMSettings:
 
     missing = [name for name, value in required if not value]
     if missing:
-        raise ConfigError(
-            f"Missing {', '.join(missing)} (LLM_PROVIDER={provider}). "
-            "Copy .env.example to .env and fill it in."
-        )
-    return LLMSettings(
+        return None, missing
+    settings = LLMSettings(
         model=model, api_key=api_key, provider=provider, account_id=account_id
     )
+    return settings, []
 
 
 # Client retries for the agent graph, per provider. The graph's RetryPolicy is

@@ -86,6 +86,26 @@ def is_quota_exhausted(exc: BaseException) -> bool:
 
 _SDK_CONNECTION_ERRORS = frozenset({"APIConnectionError", "APITimeoutError"})
 
+# google-genai 3.x (installed on Python 3.11+, so on the deployed 3.12) sends
+# its requests with httpx2, a separate copy of httpx: its ConnectError,
+# ReadTimeout, ... mirror httpx's classes but are not subclasses of them, so
+# the isinstance check below misses them. They are matched by base-class name
+# and package instead, so this module never has to import httpx2. Only the
+# transport family counts (timeouts, refused or dropped connections, protocol
+# errors), exactly as for httpx; httpx2's other errors (bad URL, decoding,
+# HTTPStatusError) are not transient. httpcore/httpcore2 errors normally
+# arrive wrapped, but count too if one ever escapes.
+_HTTP_LIBRARIES = frozenset({"httpx", "httpx2", "httpcore", "httpcore2"})
+_TRANSPORT_BASES = frozenset({"TransportError", "TimeoutException", "NetworkError"})
+
+
+def _is_http_transport_error(exc: BaseException) -> bool:
+    return any(
+        cls.__name__ in _TRANSPORT_BASES
+        and cls.__module__.split(".")[0] in _HTTP_LIBRARIES
+        for cls in type(exc).__mro__
+    )
+
 
 def is_transient_llm_error(exc: BaseException) -> bool:
     """True if one more try may succeed: a 5xx, a timeout or a dropped connection.
@@ -94,6 +114,8 @@ def is_transient_llm_error(exc: BaseException) -> bool:
     minute and the daily quota a day, so an immediate retry only wastes calls.
     """
     if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+        return True
+    if _is_http_transport_error(exc):  # httpx2 (Gemini on Python 3.11+)
         return True
     if isinstance(exc, (TimeoutError, ConnectionError)):
         return True
@@ -155,6 +177,15 @@ def describe_llm_error(exc: BaseException) -> str:
     (in a badly formed error) a key. Only the exception's type name is shown
     for unknown errors, to help debugging.
     """
+    # Imported here: provider_pool imports this module.
+    from ai_travel_assistant.provider_pool import AllProvidersUnavailable
+
+    if isinstance(exc, AllProvidersUnavailable):
+        return {
+            "quota": QUOTA_MESSAGE,
+            "rate_limit": RATE_LIMIT_MESSAGE,
+            "busy": BUSY_MESSAGE,
+        }.get(exc.kind, REJECTED_MESSAGE)
     if is_quota_exhausted(exc):
         return QUOTA_MESSAGE
     if is_rate_limited(exc):
@@ -164,6 +195,85 @@ def describe_llm_error(exc: BaseException) -> str:
     if error_status(exc) in (400, 401, 403, 404):
         return REJECTED_MESSAGE
     return f"Something went wrong ({type(exc).__name__}). Please try again."
+
+
+# --- Messages for public visitors (TRAVEL_PUBLIC=1) -------------------------------
+#
+# describe_llm_error() above is for the developer (CLI, local page): it may
+# say "switch LLM_PROVIDER in .env". A public visitor can do nothing with
+# that, so the public page uses these instead: plain words, what to do next,
+# and never a key, a provider's error text, a type name or a setting name.
+
+VISITOR_QUOTA = (
+    "This demo has used up today's free AI allowance. Please try again later "
+    "today or tomorrow."
+)
+VISITOR_RATE_LIMIT = (
+    "The free AI service is getting too many requests right now. "
+    "Please wait {wait} and try again."
+)
+VISITOR_BUSY = (
+    "The AI service is busy or slow to respond at the moment. Please try "
+    "again in a minute."
+)
+VISITOR_UNAVAILABLE = (
+    "Live AI is temporarily unavailable on this demo. The problem is on our "
+    "side, not with your request. Please try again later."
+)
+VISITOR_UNEXPECTED = (
+    "Something went wrong while planning your trip. Please try again, or "
+    "rephrase your request."
+)
+VISITOR_NOT_CONFIGURED = (
+    "Live AI is not available on this demo right now. Please come back later."
+)
+
+ErrorCategory = Literal["quota", "rate_limit", "busy", "unavailable", "unexpected"]
+
+
+def error_category(exc: BaseException) -> ErrorCategory:
+    """One plain category for a failed turn (safe to log: no error text)."""
+    from ai_travel_assistant.provider_pool import AllProvidersUnavailable
+
+    if isinstance(exc, AllProvidersUnavailable):
+        return {
+            "quota": "quota",
+            "rate_limit": "rate_limit",
+            "busy": "busy",
+        }.get(exc.kind, "unavailable")
+    if is_quota_exhausted(exc):
+        return "quota"
+    if is_rate_limited(exc):
+        return "rate_limit"
+    if is_transient_llm_error(exc):
+        return "busy"
+    if error_status(exc) in (400, 401, 403, 404):
+        return "unavailable"
+    return "unexpected"
+
+
+def _wait_text(seconds: float | None) -> str:
+    """'about 40 seconds', 'about 3 minutes'; 'a minute' when unknown."""
+    if seconds is None or seconds <= 0 or seconds > 600:
+        return "a minute"
+    if seconds < 60:
+        return f"about {max(5, round(seconds / 5) * 5)} seconds"
+    minutes = round(seconds / 60)
+    return "about a minute" if minutes == 1 else f"about {minutes} minutes"
+
+
+def describe_error_for_visitor(exc: BaseException) -> str:
+    """A failed turn in words a public visitor can act on. Never the error text."""
+    category = error_category(exc)
+    if category == "rate_limit":
+        return VISITOR_RATE_LIMIT.format(
+            wait=_wait_text(getattr(exc, "retry_after_s", None))
+        )
+    return {
+        "quota": VISITOR_QUOTA,
+        "busy": VISITOR_BUSY,
+        "unavailable": VISITOR_UNAVAILABLE,
+    }.get(category, VISITOR_UNEXPECTED)
 
 
 # --- Tool errors ------------------------------------------------------------------

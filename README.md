@@ -152,6 +152,8 @@ uv run --extra ui streamlit run src/ai_travel_assistant/web_app.py
 
 The page is a chat with the same agent, conversations and progress steps as the terminal chat. The sidebar has a new-conversation button, the itinerary JSON and your saved preferences.
 
+**Public demo.** With `TRAVEL_PUBLIC=1` the same page runs as a free public demo: provider fallback (Gemini → Cloudflare → Groq), usage limits, private visitor sessions without saved preferences, plain error messages and a labelled Sample Trip that needs no AI. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Streamlit Community Cloud and [ADR-0005](docs/decisions/0005-public-provider-fallback.md) for the design.
+
 ### LangGraph Studio (graph view and step-through)
 
 `langgraph dev` needs Python 3.11+, so it runs in its own environment with this project installed:

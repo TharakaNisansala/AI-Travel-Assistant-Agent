@@ -1,0 +1,160 @@
+{
+  "destination": "Kandy",
+  "days": 2,
+  "start_from": "Colombo",
+  "start_assumed": true,
+  "summary": "Two relaxed days in Kandy, Sri Lanka's cultural capital and a UNESCO World Heritage city: the lake, a Kandyan dance show and the Temple of the Tooth on day one, then the temple museums and the botanical gardens at Peradeniya on day two.",
+  "day_plans": [
+    {
+      "day": 1,
+      "theme": "Arrival, the lake and the Temple of the Tooth",
+      "forecast_date": null,
+      "weather": null,
+      "travel": [
+        {
+          "from_place": "Colombo",
+          "to_place": "Kandy",
+          "road_distance_km": 115,
+          "driving_minutes": 132
+        }
+      ],
+      "activities": [
+        {
+          "time_of_day": "afternoon",
+          "name": "Kandy Lake",
+          "description": "Stretch your legs after the drive with a gentle walk around the lake in the centre of town.",
+          "estimated_hours": 1,
+          "distance_km": null,
+          "source": "Wikivoyage"
+        },
+        {
+          "time_of_day": "evening",
+          "name": "Kandyan dancing",
+          "description": "Watch a traditional Kandyan dance performance at the Kandy Cultural Centre near the lake.",
+          "estimated_hours": 1.5,
+          "distance_km": null,
+          "source": "Wikivoyage"
+        },
+        {
+          "time_of_day": "evening",
+          "name": "Temple of the Tooth (Sri Dalada Maligawa)",
+          "description": "Visit one of Sri Lanka's most sacred Buddhist shrines, home to a tooth relic of the Buddha, and see the relic's casket at the evening ceremony.",
+          "estimated_hours": 1.5,
+          "distance_km": null,
+          "source": "Wikivoyage"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "theme": "Temple museums and the botanical gardens",
+      "forecast_date": null,
+      "weather": null,
+      "travel": [
+        {
+          "from_place": "Kandy",
+          "to_place": "Peradeniya",
+          "road_distance_km": 8,
+          "driving_minutes": 10
+        }
+      ],
+      "activities": [
+        {
+          "time_of_day": "morning",
+          "name": "Royal Palace of Kandy",
+          "description": "Explore the former royal palace beside the temple, which now houses an archaeological museum.",
+          "estimated_hours": 1,
+          "distance_km": null,
+          "source": "Wikivoyage"
+        },
+        {
+          "time_of_day": "morning",
+          "name": "World Buddhist Museum",
+          "description": "See how Buddhism is practised around the world at this museum in the temple complex.",
+          "estimated_hours": 1,
+          "distance_km": null,
+          "source": "Wikivoyage"
+        },
+        {
+          "time_of_day": "afternoon",
+          "name": "Peradeniya Royal Botanical Gardens",
+          "description": "Spend a relaxed afternoon in the botanical gardens at Peradeniya, a short drive from Kandy.",
+          "estimated_hours": 2.5,
+          "distance_km": null,
+          "source": "Built-in guide"
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "item": "Kandyan dance show ticket",
+      "per": "person",
+      "quantity": 1,
+      "quantity_note": "One show; the upper end of the 2024 range of Rs 2,000-3,500.",
+      "quoted_currency": "LKR",
+      "amount_lkr": 3500,
+      "amount_usd": null
+    },
+    {
+      "item": "Second-class train ticket, Colombo to Kandy (one way)",
+      "per": "person",
+      "quantity": 1,
+      "quantity_note": "Optional instead of driving; 2023 price.",
+      "quoted_currency": "LKR",
+      "amount_lkr": 500,
+      "amount_usd": null
+    }
+  ],
+  "facts": [
+    {
+      "text": "Intercity express trains from Colombo take 2.5 to 3 hours, with about 10 trains a day.",
+      "quote": "Intercity express trains are hassle-free and scenic, 2½-3 hours, 10 trains per day.",
+      "source": "Wikivoyage"
+    },
+    {
+      "text": "Temple of the Tooth entry was Rs 2,000 for foreigners and Rs 500 for South Asian passport holders (a 2017 price; check the current fee).",
+      "quote": "Rs 2,000 (since Jan 2017) for foreigners and Rs 500 for South Asian passport holders.",
+      "source": "Wikivoyage"
+    },
+    {
+      "text": "The relic's casket is shown twice a day; the evening showing is around 6:30 PM.",
+      "quote": "the second which could be the best time to view this ornate casket is around 6:30PM",
+      "source": "Wikivoyage"
+    },
+    {
+      "text": "Entry to the Royal Palace and the World Buddhist Museum is included in the Temple of the Tooth ticket.",
+      "quote": "Entrance fee included into Temple of the Tooth ticket.",
+      "source": "Wikivoyage"
+    },
+    {
+      "text": "Kandyan dance shows cost about Rs 2,000-3,500 a ticket (2024) and last about an hour.",
+      "quote": "As of 2024, expect prices to range from 2000 to 3500 per ticket for about 1 hour performances",
+      "source": "Wikivoyage"
+    },
+    {
+      "text": "Agree the tuk-tuk fare before you ride; around Rs 60-70 a kilometre is a fair price.",
+      "quote": "If you can get them for Rs 60-70 per Km you are doing well",
+      "source": "Wikivoyage"
+    }
+  ],
+  "tips": [
+    "Dress modestly for the temple: cover your shoulders and knees, and take off shoes and hats before you enter."
+  ],
+  "assumptions": [
+    "The trip starts from Colombo.",
+    "You travel between places by car; the train is an alternative for the first day."
+  ],
+  "not_available": [
+    "Weather: this sample is not tied to travel dates, so there is no forecast.",
+    "Hotels and a full trip budget: ask the live assistant for these.",
+    "Peradeniya Royal Botanical Gardens entrance fee: not in the saved data; check before you go."
+  ],
+  "warnings": [
+    "Prices and times come from saved Wikivoyage text (2017-2024) and may be out of date."
+  ],
+  "entrance_fees": [],
+  "cost_lines": [],
+  "stays": null,
+  "budget": null
+}
