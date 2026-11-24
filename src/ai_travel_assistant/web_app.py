@@ -538,8 +538,11 @@ def main() -> None:
     if public and state.get("offer_sample"):
         sample_offer()
     guard = get_usage_guard() if public else None
-    max_chars = guard.limits.max_message_chars if guard else None
-    if prompt := st.chat_input(PLACEHOLDER, max_chars=max_chars) or picked:
+    # No max_chars on the chat box: Streamlit 1.67 (Python 3.11+) cuts the
+    # submitted text to max_chars on the server, so an overlong message would
+    # be sent shortened, silently. guard.refusal() below checks the full text
+    # and refuses it instead, before any LLM call or session count.
+    if prompt := st.chat_input(PLACEHOLDER) or picked:
         if run_command(graph, user_id, prompt):
             st.rerun()  # show the reply (and a /new thread) without the LLM
         if public and not prompt.strip():

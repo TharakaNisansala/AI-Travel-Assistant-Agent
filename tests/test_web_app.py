@@ -954,3 +954,89 @@ def test_local_turns_have_no_slow_note(page):
     app = page(streaming(fail_on={0: RuntimeError("x")}))
     app.chat_input[0].set_value("What is Ella like?").run()
     assert web_app.SLOW_NOTE not in [c.value for c in app.caption]
+
+
+# --- Public mode: message length checked by the app, never cut (Finding B) ---------
+
+
+def sent_to_model(model) -> list[str]:
+    """The traveller texts the model received, in full."""
+    from langchain_core.messages import HumanMessage
+
+    return [
+        m.content for call in model.calls for m in call if isinstance(m, HumanMessage)
+    ]
+
+
+def test_the_public_chat_box_has_no_max_chars(public_page):
+    """Streamlit 1.67 cuts input to max_chars on the server; the app checks instead."""
+    app = public_page(streaming())
+    assert app.chat_input[0].proto.max_chars == 0  # 0: no limit on the widget
+
+
+@pytest.mark.parametrize("length", [39, 40])
+def test_a_message_up_to_the_limit_is_sent_in_full(public_page, length):
+    model = streaming("Noted.")
+    app = public_page(model)  # limit 40 in this fixture
+    text = "a" * (length - 1) + "!"
+    app.chat_input[0].set_value(text).run()
+    assert not app.exception
+    assert text in sent_to_model(model)  # whole, not shortened
+    assert app.session_state["messages_sent"] == 1
+    assert not any("limit is" in w.value for w in app.warning)
+
+
+def test_a_message_over_the_limit_is_refused_not_cut(public_page):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    app.chat_input[0].set_value("a" * 40 + "!").run()  # 41 characters
+    [warning] = [w.value for w in app.warning]
+    assert "41 characters" in warning and "limit is 40" in warning
+    assert model.calls == []  # no LLM call, not even with a shortened text
+    assert texts(app) == []
+    assert app.session_state["messages_sent"] == 0
+    assert web_app.SAMPLE_OFFER not in [i.value for i in app.info]
+
+
+@pytest.mark.parametrize(("length", "sent"), [(999, True), (1000, True), (1001, False)])
+def test_the_default_limit_is_1000_characters(public_page, monkeypatch, length, sent):
+    monkeypatch.delenv("TRAVEL_MAX_MESSAGE_CHARS")  # back to the default
+    model = streaming("Noted.")
+    app = public_page(model)
+    text = "b" * (length - 1) + "?"
+    app.chat_input[0].set_value(text).run()
+    assert (text in sent_to_model(model)) is sent
+    assert app.session_state["messages_sent"] == (1 if sent else 0)
+    refused = any(f"{length:,} characters" in w.value for w in app.warning)
+    assert refused is not sent
+    if not sent:
+        assert model.calls == []
+
+
+def test_refused_long_messages_do_not_use_up_the_session_limit(public_page):
+    model = streaming("One.", "Two.")
+    app = public_page(model)  # 2 messages per session, 40 characters
+    for _ in range(3):
+        app.chat_input[0].set_value("c" * 60).run()
+    assert app.session_state["messages_sent"] == 0
+    app.chat_input[0].set_value("What is Ella like?").run()
+    app.chat_input[0].set_value("What is Ella like?").run()
+    assert app.session_state["messages_sent"] == 2
+    assert "Two." in texts(app)
+
+
+def test_a_long_blank_message_is_still_the_blank_message(public_page):
+    model = streaming("Never sent.")
+    app = public_page(model)
+    app.chat_input[0].set_value(" " * 500).run()
+    assert [w.value for w in app.warning] == [web_app.BLANK_MESSAGE]
+    assert model.calls == []
+
+
+def test_local_mode_has_no_length_limit(page):
+    model = streaming("Noted.")
+    app = page(model)
+    text = "d" * 1500
+    app.chat_input[0].set_value(text).run()
+    assert text in sent_to_model(model)
+    assert app.warning == []

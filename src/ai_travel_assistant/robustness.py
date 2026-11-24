@@ -86,6 +86,26 @@ def is_quota_exhausted(exc: BaseException) -> bool:
 
 _SDK_CONNECTION_ERRORS = frozenset({"APIConnectionError", "APITimeoutError"})
 
+# google-genai 3.x (installed on Python 3.11+, so on the deployed 3.12) sends
+# its requests with httpx2, a separate copy of httpx: its ConnectError,
+# ReadTimeout, ... mirror httpx's classes but are not subclasses of them, so
+# the isinstance check below misses them. They are matched by base-class name
+# and package instead, so this module never has to import httpx2. Only the
+# transport family counts (timeouts, refused or dropped connections, protocol
+# errors), exactly as for httpx; httpx2's other errors (bad URL, decoding,
+# HTTPStatusError) are not transient. httpcore/httpcore2 errors normally
+# arrive wrapped, but count too if one ever escapes.
+_HTTP_LIBRARIES = frozenset({"httpx", "httpx2", "httpcore", "httpcore2"})
+_TRANSPORT_BASES = frozenset({"TransportError", "TimeoutException", "NetworkError"})
+
+
+def _is_http_transport_error(exc: BaseException) -> bool:
+    return any(
+        cls.__name__ in _TRANSPORT_BASES
+        and cls.__module__.split(".")[0] in _HTTP_LIBRARIES
+        for cls in type(exc).__mro__
+    )
+
 
 def is_transient_llm_error(exc: BaseException) -> bool:
     """True if one more try may succeed: a 5xx, a timeout or a dropped connection.
@@ -94,6 +114,8 @@ def is_transient_llm_error(exc: BaseException) -> bool:
     minute and the daily quota a day, so an immediate retry only wastes calls.
     """
     if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+        return True
+    if _is_http_transport_error(exc):  # httpx2 (Gemini on Python 3.11+)
         return True
     if isinstance(exc, (TimeoutError, ConnectionError)):
         return True
