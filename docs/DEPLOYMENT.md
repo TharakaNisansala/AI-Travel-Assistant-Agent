@@ -106,7 +106,7 @@ TRAVEL_MAX_DAILY_LLM_CALLS = "60"
 
 ## 5. Check the deployed app
 
-1. Open the app URL. The header should name your first provider and the fallbacks, e.g. "Gemini · <model> · fallback: Cloudflare, Groq". No header badge means no provider is configured (see Troubleshooting).
+1. Open the app URL. The header badge should list your configured providers in the order they are tried, e.g. "Free AI: Gemini → Cloudflare → Groq" (no model IDs). No header badge means no provider is configured (see Troubleshooting).
 2. Click **View a sample trip (no AI)** in the sidebar: a "Sample — not live AI" plan for Kandy appears, with day tabs and **Download sample plan (PDF)**. This uses no AI quota.
 3. Go back and ask one short question, e.g. "What is the weather like in Ella?" (2-4 AI calls). The sidebar must not show a thread ID or a "Traveller" field.
 4. Open the URL in a private window: it starts its own, empty conversation.
@@ -122,7 +122,7 @@ Avoid long test sessions: they use the same daily quota as your visitors.
 | `ModuleNotFoundError: No module named 'ai_travel_assistant'` | The entry point is not `deploy/streamlit_app.py` | As above |
 | Package installation fails | Wrong Python version, or `deploy/requirements.txt` out of date | Choose Python 3.12; regenerate the file (section 8) and push |
 | "Live AI is not available on this demo right now." and a sample offer | No provider configured, or a limit value is invalid | Read the log line `Public page cannot start live AI: ...`; it names the missing or bad setting. Fix the Secrets, save, reboot |
-| No `fallback:` in the header | Only one provider has both key and model | Add the other provider's key and model |
+| The badge shows fewer providers than you set (e.g. only "Free AI: Gemini") | The missing providers lack a key or a model | Add the missing provider's key and model |
 | Header and page look like local mode (Traveller field, thread ID) | `TRAVEL_PUBLIC` missing or not `"1"` | Add `TRAVEL_PUBLIC = "1"` (quoted, top level), reboot |
 | "This demo has used up today's free AI allowance." | Every provider's daily quota is used up | Wait (Gemini resets at about 13:30 Sri Lanka time), or add another provider |
 | "This demo has used its free AI budget for today." | `TRAVEL_MAX_DAILY_LLM_CALLS` reached | Resets at 00:00 UTC (05:30 Sri Lanka time), or after a reboot |
