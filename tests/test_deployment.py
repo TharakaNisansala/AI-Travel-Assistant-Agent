@@ -259,9 +259,9 @@ def test_the_entry_point_reads_the_fallback_order_from_settings(clean_state):
     app.run()  # builds the real pool and graph; no API call until a message
     assert not app.exception
     header = " ".join(md.value for md in app.markdown)
-    assert "Cloudflare · glm-4.7-flash · fallback: Gemini" in header
-    for secret in ("fake-gemini-key", "fake-cf-token", "fake-account"):
-        assert secret not in header
+    assert "Free AI: Cloudflare → Gemini" in header  # the configured order
+    for detail in ("fake-gemini-key", "fake-cf-token", "fake-account", "glm", "flash"):
+        assert detail not in header
     assert len(app.chat_input) == 1 and app.text_input == []
 
 

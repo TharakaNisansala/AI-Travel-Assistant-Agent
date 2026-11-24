@@ -425,10 +425,28 @@ def test_public_mode_builds_the_agent_with_the_provider_pool(page, monkeypatch):
     app = page(streaming("Ella is green."))
     assert [type(s).__name__ for s in built_with] == ["PoolSettings"]
     header = " ".join(md.value for md in app.markdown)
-    assert "Gemini · flash · fallback: Cloudflare, Groq" in header
-    assert "g-secret" not in header
+    # The order the providers are tried in, without model IDs or a claim
+    # that the first one answers.
+    assert "Free AI: Gemini → Cloudflare → Groq" in header
+    for detail in ("g-secret", "flash", "glm", "oss", "fallback:"):
+        assert detail not in header
     app.chat_input[0].set_value("What is Ella like?").run()
     assert "Ella is green." in texts(app)
+
+
+def test_public_mode_with_one_provider_names_just_that_provider(page, monkeypatch):
+    from ai_travel_assistant import provider_pool
+    from ai_travel_assistant.provider_pool import PoolSettings
+
+    def gemini_only():
+        return PoolSettings(members=(llm_basics.LLMSettings("flash", "g-secret"),))
+
+    monkeypatch.setenv(web_app.PUBLIC_ENV, "1")
+    monkeypatch.setattr(provider_pool, "load_pool_settings", gemini_only)
+    app = page(streaming())
+    header = " ".join(md.value for md in app.markdown)
+    assert "Free AI: Gemini" in header
+    assert "→" not in header and "flash" not in header
 
 
 def test_public_mode_with_no_provider_configured_says_so(page, monkeypatch, caplog):

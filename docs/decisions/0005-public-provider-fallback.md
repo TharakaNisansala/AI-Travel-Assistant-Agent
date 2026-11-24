@@ -66,7 +66,7 @@ Other public-only choices that go with it: no long-term memory and in-memory con
 
 **Costs and limitations**
 
-- **Answer quality varies by provider.** A visitor may get a Groq answer after Gemini's quota is gone; providers are not interchangeable (ADR-0004). The page header names the first provider and the fallbacks, not the one that answered.
+- **Answer quality varies by provider.** A visitor may get a Groq answer after Gemini's quota is gone; providers are not interchangeable (ADR-0004). The header badge lists the providers in the order they are tried ("Free AI: Gemini → Cloudflare → Groq", no model IDs), not the one that answered.
 - **In memory only.** The health table and the daily budget reset on restart and are per process; several instances would each keep their own.
 - **Pauses are estimates.** Providers reset quotas on their own clocks; the 1-hour quota pause is a re-check, not a reset time.
 - **A mid-stream failure** can briefly show partial text before the next provider's answer replaces it.

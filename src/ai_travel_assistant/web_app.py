@@ -230,9 +230,12 @@ def show_notice() -> None:
 
 
 def model_label() -> str | None:
-    """'Cloudflare · glm-4.7-flash' for the header badge (no secrets).
+    """The header badge (no secrets).
 
-    Public mode names the first provider and the fallbacks after it.
+    Local: 'Cloudflare · glm-4.7-flash', the one model that answers.
+    Public: 'Free AI: Gemini → Cloudflare → Groq', the providers in the order
+    they are tried. No model IDs, and no claim that the first one answered:
+    after its quota runs out, a later provider does.
     """
     from ai_travel_assistant.llm_basics import ConfigError
 
@@ -240,15 +243,11 @@ def model_label() -> str | None:
         settings = load_llm_settings(public_mode())
     except ConfigError:
         return None
-    fallbacks: list[str] = []
     if hasattr(settings, "members"):  # a provider pool
-        fallbacks = [m.provider.capitalize() for m in settings.members[1:]]
-        settings = settings.primary
+        order = " → ".join(m.provider.capitalize() for m in settings.members)
+        return f"Free AI: {order}"
     short = settings.model.rsplit("/", 1)[-1]
-    label = f"{settings.provider.capitalize()} · {short}"
-    if fallbacks:
-        label += f" · fallback: {', '.join(fallbacks)}"
-    return label
+    return f"{settings.provider.capitalize()} · {short}"
 
 
 def itinerary_markdown(itinerary: dict | None) -> str | None:
