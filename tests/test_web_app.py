@@ -495,6 +495,28 @@ def warnings(app) -> list[str]:
     return [w.value for w in app.warning]
 
 
+def test_a_plan_after_a_weather_question_shows_quick_replies(public_page, monkeypatch):
+    """Seen live (2026-11-24): the plan came at once, with assumed details."""
+    from tests.test_clarification import understood
+    from tests.test_streaming import ANSWERS
+
+    monkeypatch.setitem(
+        ANSWERS,
+        "Plan 2 days in Kandy",
+        understood("modify", destination="Kandy", days=2),
+    )
+    model = streaming("Ella is mild, with afternoon showers.")
+    app = public_page(model)
+    type_in_chat(app, "What is Ella like?")
+    type_in_chat(app, "Plan 2 days in Kandy")
+
+    assert len(model.calls) == 1  # the plan request made no agent call
+    assert texts(app)[-1].startswith("How many people are travelling")
+    labels = {b.label for b in quick_reply_buttons(app)}
+    assert labels == {label for label, _ in QUICK_REPLIES["travellers"]}
+    assert app.tabs == []  # no itinerary cards yet
+
+
 def test_public_mode_passes_the_limits_to_the_agent(public_page):
     public_page(streaming())
     [settings] = built_with

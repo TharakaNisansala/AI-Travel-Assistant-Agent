@@ -32,6 +32,7 @@ lives in tool_calling.build_tool_agent_graph(..., understander=...).
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, Protocol
@@ -47,12 +48,14 @@ from ai_travel_assistant.party import (
     missing_group_fields,
     nationality_group,
 )
-from ai_travel_assistant.robustness import is_quota_exhausted
+from ai_travel_assistant.robustness import error_category, is_quota_exhausted
 from ai_travel_assistant.schemas import (
     PLAN_FIELDS,
     RequestUnderstanding,
     TripRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 # Node names, used by tool_calling to wire the graph.
 UNDERSTAND_REQUEST = "understand_request"
@@ -353,6 +356,31 @@ def agent_answered_before(messages: Sequence[AnyMessage]) -> bool:
     )
 
 
+def plan_given_before(state: Mapping) -> bool:
+    """True if a real plan was given before the latest traveller message.
+
+    A real plan is a checked itinerary (saved in the state, or a reply named
+    ITINERARY_NAME), or, for agents without structured itineraries, an answer
+    given while a trip was already being planned (a destination is known).
+    Other answers never count: a weather question saves no trip, so "Plan 2
+    days in Kandy" after it is a new plan to clarify, not a change (seen live
+    on 2026-11-24, when "modify" skipped every question).
+    """
+    # Imported here: itinerary_output loads the budget and grounding code.
+    from ai_travel_assistant.itinerary_output import ITINERARY_NAME
+
+    if state.get("itinerary"):
+        return True
+    messages = state.get("messages", [])
+    end = _latest_human_index(messages) or 0
+    if any(
+        isinstance(m, AIMessage) and m.name == ITINERARY_NAME for m in messages[:end]
+    ):
+        return True
+    trip = state.get("trip_request") or {}
+    return not _is_missing(trip.get("destination")) and agent_answered_before(messages)
+
+
 def describe_trip(trip: Mapping[str, object] | None) -> str:
     """The known trip details as one short line, e.g. 'destination=Galle, days=2'."""
     parts = []
@@ -429,7 +457,7 @@ def make_understand_request_node(
         }
         if existing:
             context["existing_data"] = existing
-        has_plan = agent_answered_before(messages)
+        has_plan = plan_given_before(state)
         if has_plan:
             context["has_plan"] = True
 
@@ -441,6 +469,13 @@ def make_understand_request_node(
             if is_quota_exhausted(exc):
                 raise
             # Anything else (a 503, a bad reply): the agent answers as before.
+            # Category and type only: provider error text can echo the request.
+            logger.warning(
+                "Request understanding failed: %s (%s); the agent answers "
+                "without clarifying",
+                error_category(exc),
+                type(exc).__name__,
+            )
             return {**update, "intent": None, "missing_fields": []}
 
         intent = understanding.intent

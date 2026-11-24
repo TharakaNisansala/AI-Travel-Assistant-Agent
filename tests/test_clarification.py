@@ -481,6 +481,82 @@ def test_modify_after_a_plan_tells_the_understander_and_skips_clarifying():
     assert update["missing_fields"] == []
 
 
+# Seen live (2026-11-24): a weather answer counted as "a plan was given", the
+# understander was told so and returned "modify", and every question was skipped.
+WEATHER_THEN_PLAN = [
+    HumanMessage("What is the weather like in Ella?"),
+    AIMessage("Ella: 22-27 °C, with afternoon showers."),
+    HumanMessage("Plan 2 days in Kandy"),
+]
+
+
+def test_a_new_plan_after_a_weather_answer_is_clarified():
+    understander = FakeUnderstander(
+        {"Plan 2 days in Kandy": understood("plan", destination="Kandy", days=2)}
+    )
+    update = make_understand_request_node(understander)({"messages": WEATHER_THEN_PLAN})
+    assert "has_plan" not in understander.calls[0][1]  # no plan was given
+    assert update["intent"] == "plan"
+    assert update["missing_fields"][0] == "travellers"
+    assert route_after_understanding(update) == "clarify"
+
+
+def test_modify_after_a_weather_answer_is_treated_as_a_new_plan():
+    understander = FakeUnderstander(
+        {"Plan 2 days in Kandy": understood("modify", destination="Kandy", days=2)}
+    )
+    update = make_understand_request_node(understander)({"messages": WEATHER_THEN_PLAN})
+    assert update["intent"] == "plan"  # nothing to modify yet
+    assert update["trip_request"]["destination"] == "Kandy"
+    assert update["missing_fields"]
+    assert route_after_understanding(update) == "clarify"
+
+
+def test_only_a_real_plan_counts_as_a_plan_given():
+    from ai_travel_assistant.itinerary_output import ITINERARY_NAME
+
+    weather = {"messages": WEATHER_THEN_PLAN}
+    assert agent_answered_before(WEATHER_THEN_PLAN)  # an answer, but not a plan
+    assert not ru.plan_given_before(weather)
+    # A checked itinerary in the state counts, even with a question after it.
+    assert ru.plan_given_before({**weather, "itinerary": {"destination": "Ella"}})
+    # So does a rendered itinerary reply in the thread.
+    rendered = [
+        HumanMessage("Plan 2 days in Ella"),
+        AIMessage("# 2-day trip to Ella", name=ITINERARY_NAME),
+        HumanMessage("Make day 2 easier"),
+    ]
+    assert ru.plan_given_before({"messages": rendered})
+    # A prose plan (no structured itinerary) counts once a trip is planned.
+    assert ru.plan_given_before(
+        {**weather, "trip_request": {"destination": "Ella", "days": 2}}
+    )
+    # Clarification questions are not plans.
+    asked = [
+        HumanMessage("Plan me a trip"),
+        AIMessage("Where?", name=ru.CLARIFICATION_NAME),
+        HumanMessage("Galle"),
+    ]
+    assert not ru.plan_given_before(
+        {"messages": asked, "trip_request": {"destination": "Galle"}}
+    )
+
+
+def test_a_failing_understander_is_logged_without_its_error_text(caplog):
+    def broken(text, **context):
+        raise RuntimeError("bad reply; key=secret-123 user text: Plan a trip")
+
+    with caplog.at_level("WARNING", logger=ru.__name__):
+        update = make_understand_request_node(broken)(
+            {"messages": [HumanMessage("Plan a trip")]}
+        )
+    assert update["intent"] is None
+    [record] = [r for r in caplog.records if r.name == ru.__name__]
+    logged = record.getMessage()
+    assert "unexpected" in logged and "RuntimeError" in logged
+    assert "secret-123" not in logged and "Plan a trip" not in logged
+
+
 def test_a_failing_understander_hands_the_turn_to_the_agent():
     def broken(text, **context):
         raise RuntimeError("429 RESOURCE_EXHAUSTED")

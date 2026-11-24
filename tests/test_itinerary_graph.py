@@ -535,6 +535,37 @@ def test_clarify_then_plan_then_modify(tools):
     assert final_answer(edited).startswith("# 2-day trip to Ella")
 
 
+def test_a_new_plan_after_a_weather_question_asks_with_quick_replies():
+    """Seen live (2026-11-24): the weather answer made this a 'modify' turn."""
+    from ai_travel_assistant.request_understanding import QUICK_REPLIES
+    from ai_travel_assistant.tool_calling import pending_question
+    from tests.test_clarification import FakeUnderstander, understood
+
+    understander = FakeUnderstander(
+        {
+            "What is the weather like in Ella?": understood("question"),
+            # The worst case: the understander still reads it as a change.
+            "Plan 2 days in Kandy": understood("modify", destination="Kandy", days=2),
+        }
+    )
+    model = scripted("Ella is mild, with afternoon showers.")
+    graph = build(model, understander=understander)
+
+    ask_agent(graph, "t1", "What is the weather like in Ella?")
+    turn = ask_agent(graph, "t1", "Plan 2 days in Kandy")
+
+    assert "has_plan" not in understander.calls[-1][1]
+    assert turn[-1].name == "clarification"  # a question, not an itinerary
+    assert len(model.calls) == 1  # only the weather answer reached the agent
+    values = state(graph)
+    assert "itinerary" not in values
+    assert values["trip_request"]["destination"] == "Kandy"
+    assert values["trip_request"]["days"] == 2
+    assert pending_question(graph, "t1") == turn[-1].content
+    field = values["clarification_field"]
+    assert field == "travellers" and QUICK_REPLIES[field]  # buttons to click
+
+
 def test_the_requested_day_count_is_checked(tools):
     graph = build(scripted(gather(), submit(plan(days=1))), understander=Understander())
     ask_agent(graph, "t1", "Plan me a trip")
