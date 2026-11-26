@@ -245,7 +245,7 @@ This applies to **every** provider that may receive a Maps result: the main prov
 ### 5.11 Errors
 
 - Verified: `pageSize` above 10 returns `INVALID_ARGUMENT`.
-- **Assumption** (standard Google APIs, recorded in Stage 1): 400 `INVALID_ARGUMENT`, 403 `PERMISSION_DENIED` (bad key, API not enabled on the key, billing), 429 `RESOURCE_EXHAUSTED` (quota or demo daily limit), 5xx server errors, JSON body `{"error": {"code", "message", "status"}}`.
+- **Assumption** (standard Google APIs, recorded in Stage 1): 400 `INVALID_ARGUMENT`, 403 `PERMISSION_DENIED` (API not enabled on the key, billing), 429 `RESOURCE_EXHAUSTED` (quota or demo daily limit), 5xx server errors, JSON body `{"error": {"code", "message", "status"}}`. **Observed 2026-11-26 (T10):** an invalid key returns **400** `INVALID_ARGUMENT` with `details[].reason` `API_KEY_INVALID` (not 403), so error mapping must read `reason`, not only the status.
 
 ### 5.12 Open policy questions
 
@@ -1288,4 +1288,4 @@ Record **observations only**: no summary text, place names, addresses or URLs. E
 | T07 | | | | | | | | | | |
 | T08 | | | | | | | | | | |
 | T09 | | | | | | | | | | |
-| T10 | | — | — | — | — | — | | — | — | error status: |
+| T10 | 400 | — | — | — | — | — | 0.56–2.77 | — | — | Run 2026-11-26 by the assistant (no key needed): `INVALID_ARGUMENT`, `details[].reason` = `API_KEY_INVALID`, `metadata.service` = `mapstools.googleapis.com`. A bad key is **400, not 403** |
