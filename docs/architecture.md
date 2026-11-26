@@ -89,4 +89,5 @@ These are options, not commitments. Nothing below exists in the code.
 - **Multi-agent:** use this graph as one specialist subgraph under a supervisor.
 - **Serving:** an API layer (for example FastAPI) with real authentication passing `user_id` through runtime context.
 - **Provider fallback:** switch provider automatically on quota errors. Today the switch is manual.
+- **Google Maps data (Maps Experience agent tools):** dynamic discovery of destinations, attractions, hotels and restaurants, with the current sources as fallbacks. Planning only, decisions under review: see [plans/google-places-api-integration-plan.md](plans/google-places-api-integration-plan.md).
 - **Observability:** LangSmith tracing is available (off unless `LANGSMITH_TRACING` is set) but not part of the workflow.
